@@ -106,14 +106,14 @@ fn render_header(frame: &mut Frame, game: &Game, player_id: PlayerId, area: Rect
         lines.push(Line::from(vec![
             Span::styled(format!("{} - ", hero.name()), GameColors::HERO.to_color()),
             Span::raw(format!(
-                "Room {}@{:?} - ",
+                "Room {}@{:8} - ",
                 hero.maze_id() + 1,
-                hero.position()
+                format!("{:?}", hero.position())
             )),
             Span::raw(format!(
                 "Power up {}collected",
                 if let Some(power_up) = hero.power_up_collected_in_maze() {
-                    format!("({})", power_up)
+                    format!("({}) ", power_up)
                 } else {
                     "not ".to_string()
                 }
