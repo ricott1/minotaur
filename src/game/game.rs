@@ -470,12 +470,6 @@ impl Game {
                         }
 
                         hero.set_position((new_x, new_y));
-                        hero.update_past_visible_positions(maze.get_and_cache_visible_positions(
-                            hero.position(),
-                            hero.direction(),
-                            hero.view(),
-                        ));
-
                         if let Some(position) = maze.power_up_position {
                             if position == hero.position()
                                 && hero.power_up_collected_in_maze().is_none()
@@ -483,6 +477,12 @@ impl Game {
                                 hero.apply_power_up();
                             }
                         }
+
+                        hero.update_past_visible_positions(maze.get_and_cache_visible_positions(
+                            hero.position(),
+                            hero.direction(),
+                            hero.view(),
+                        ));
 
                         if maze.is_entrance_position(hero.position()) {
                             if maze_id > 0 {
