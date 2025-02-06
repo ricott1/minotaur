@@ -14,7 +14,10 @@ use ratatui::{
     widgets::{Block, BorderType, Paragraph},
     Frame,
 };
-use std::time::{Duration, Instant};
+use std::{
+    collections::HashMap,
+    time::{Duration, Instant},
+};
 
 const MINORADAR: [&'static str; 8] = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"];
 
@@ -97,12 +100,6 @@ fn render_header(frame: &mut Frame, game: &Game, player_id: PlayerId, area: Rect
     ];
 
     if let Some(hero) = game.get_hero(&player_id) {
-        let num_minotaurs = game.minotaurs_in_maze(hero.maze_id());
-
-        let alarm_level = game.alarm_level(&hero.id());
-
-        let minoradar: String = MINORADAR.iter().take(alarm_level).map(|s| *s).collect();
-
         lines.push(Line::from(vec![
             Span::styled(format!("{} - ", hero.name()), GameColors::HERO.to_color()),
             Span::raw(format!(
@@ -120,13 +117,20 @@ fn render_header(frame: &mut Frame, game: &Game, player_id: PlayerId, area: Rect
             )),
         ]));
 
+        let num_minotaurs = game.minotaurs_in_maze(hero.maze_id());
+        let (alarm_level, min_distance_squared) = game.alarm_level(&hero.id());
+        let radar_power = 16 * 16 / min_distance_squared.max(1);
+        let minoradar: String = MINORADAR.iter().take(radar_power).map(|s| *s).collect();
         lines.push(Line::from(vec![
             Span::raw(format!(
                 "{} minotaur{}  ",
                 num_minotaurs,
                 if num_minotaurs == 1 { "" } else { "s" }
             )),
-            Span::raw(format!("{}", minoradar)),
+            Span::styled(
+                format!("{}", minoradar),
+                Style::new().fg(alarm_level.rgba().to_color()),
+            ),
         ]));
     }
 
@@ -208,7 +212,9 @@ fn render_sidebar(
                 .top_minotaurs()
                 .iter()
                 .take(4)
-                .map(|(_, name, kills)| Line::from(format!("{}: k{}", name, kills)))
+                .map(|(_, name, maze_id, kills)| {
+                    Line::from(format!("{}: k{} r{}", name, kills, maze_id + 1))
+                })
                 .collect_vec();
 
             frame.render_widget(
@@ -296,16 +302,26 @@ pub fn render(
     let image = game.draw(player_id)?;
 
     let maze = game.get_maze(&hero.maze_id()).unwrap();
+
+    // Override empty positions.
     let visible_positions =
         maze.get_cached_visible_positions(hero.position(), hero.direction(), hero.view());
-    let override_positions = visible_positions
+    let mut override_positions = visible_positions
         .iter()
         .filter(|(x, y)| image.get_pixel(*x as u32, *y as u32).to_rgb() == Rgb([0, 0, 0]))
-        .map(|&(x, y)| (x as u32, y as u32))
-        .collect();
+        .map(|&(x, y)| ((x as u32, y as u32), '·'))
+        .collect::<HashMap<(u32, u32), char>>();
+
+    for &(x, y) in maze.entrance_positions().iter() {
+        override_positions.insert((x as u32, y as u32), '←');
+    }
+
+    for &(x, y) in maze.exit_positions().iter() {
+        override_positions.insert((x as u32, y as u32), '→');
+    }
 
     frame.render_widget(
-        Paragraph::new(img_to_lines(&image, (override_positions, '·'))).centered(),
+        Paragraph::new(img_to_lines(&image, override_positions)).centered(),
         h_split[1],
     );
 

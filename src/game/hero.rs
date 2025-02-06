@@ -75,8 +75,8 @@ pub struct Hero {
 }
 
 impl Hero {
-    const MAX_SPEED: u64 = 8;
-    const MAX_VISION: usize = 8;
+    pub const MAX_SPEED: u64 = 8;
+    pub const MAX_VISION: usize = 8;
     pub fn new(id: PlayerId, name: String, position: Position) -> Self {
         let state = HeroState::InMaze;
         Self {
@@ -148,6 +148,10 @@ impl Hero {
 
     pub fn set_maze_id(&mut self, maze_id: usize) {
         self.maze_id = maze_id;
+    }
+
+    pub fn decrease_vision(&mut self) {
+        self.vision -= 1;
     }
 
     pub fn apply_power_up(&mut self) {

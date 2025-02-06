@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use image::{Rgb, Rgba, RgbaImage};
 use ratatui::{
     style::{Color, Style},
@@ -6,7 +8,7 @@ use ratatui::{
 
 pub fn img_to_lines<'a>(
     img: &RgbaImage,
-    image_char_overrides: (Vec<(u32, u32)>, char),
+    image_char_overrides: HashMap<(u32, u32), char>,
 ) -> Vec<Line<'a>> {
     let mut lines: Vec<Line> = vec![];
     let width = img.width();
@@ -21,14 +23,15 @@ pub fn img_to_lines<'a>(
 
             // check for overrides.
             // Maze valid, visible, not occupied positions (alpha < 255)
-            let override_positions = &image_char_overrides.0;
-            let override_char = image_char_overrides.1;
-            if override_positions.contains(&(x, y)) && override_positions.contains(&(x, y + 1)) {
+            if image_char_overrides.contains_key(&(x, y))
+                && image_char_overrides.contains_key(&(x, y + 1))
+            {
                 let [_, _, _, ta] = top_pixel.0;
-
                 let [_, _, _, ba] = btm_pixel.0;
+                // This is a hack to only override empty cells,
+                // since 'stuff' is always printed with alpha=255.
                 if ta < 255 && ba < 255 {
-                    // Convert rgba to rgb
+                    let override_char = image_char_overrides.get(&(x, y)).unwrap();
                     line.push(Span::styled(
                         override_char.to_string(),
                         Style::default().fg(Color::Rgb(ta, ta, ta)),

@@ -3,7 +3,7 @@ use super::{
     hero::{HeroCommand, HeroState, UiOptions},
     minotaur::Minotaur,
     utils::{random_minotaur_name, to_player_name},
-    GameColors, Hero, IntoDirection, Maze,
+    AlarmLevel, GameColors, Hero, IntoDirection, Maze,
 };
 use crate::{AppResult, PlayerId};
 use anyhow::anyhow;
@@ -25,8 +25,8 @@ pub struct Game {
     top_heros: Vec<(PlayerId, String, usize)>,
     minotaurs: HashMap<PlayerId, Minotaur>,
     minotaur_rooms: HashMap<usize, Vec<PlayerId>>,
-    top_minotaurs_map: HashMap<PlayerId, (String, usize)>,
-    top_minotaurs: Vec<(PlayerId, String, usize)>,
+    top_minotaurs_map: HashMap<PlayerId, (String, usize, usize)>,
+    top_minotaurs: Vec<(PlayerId, String, usize, usize)>,
 }
 
 impl Game {
@@ -58,7 +58,14 @@ impl Game {
                     b.kills.cmp(&a.kills)
                 }
             })
-            .map(|minotaur| (minotaur.id(), minotaur.name().to_string(), minotaur.kills))
+            .map(|minotaur| {
+                (
+                    minotaur.id(),
+                    minotaur.name().to_string(),
+                    minotaur.maze_id(),
+                    minotaur.kills,
+                )
+            })
             .collect_vec();
     }
 
@@ -72,7 +79,7 @@ impl Game {
 
     pub fn new() -> Self {
         let mut mazes = HashMap::new();
-        let maze = Maze::random(0);
+        let maze = Maze::random(0, None);
 
         let minotaurs = HashMap::new();
         let mut minotaur_rooms = HashMap::new();
@@ -97,7 +104,7 @@ impl Game {
         &self.top_heros
     }
 
-    pub fn top_minotaurs(&self) -> &Vec<(PlayerId, String, usize)> {
+    pub fn top_minotaurs(&self) -> &Vec<(PlayerId, String, usize, usize)> {
         &self.top_minotaurs
     }
 
@@ -109,25 +116,37 @@ impl Game {
         }
     }
 
-    pub fn alarm_level(&self, hero_id: &PlayerId) -> usize {
+    pub fn alarm_level(&self, hero_id: &PlayerId) -> (AlarmLevel, usize) {
         if let Some(hero) = self.get_hero(hero_id) {
             if let Some(maze_minotaurs) = self.minotaur_rooms.get(&hero.maze_id()) {
-                if let Some(distance_squared) = maze_minotaurs
-                    .iter()
-                    .map(|minotaur_id| {
+                if maze_minotaurs.len() > 0 {
+                    let mut alarm_level = AlarmLevel::NotChasing;
+                    let mut min_distance = usize::MAX;
+
+                    for minotaur_id in maze_minotaurs.iter() {
                         let minotaur = self.get_minotaur(minotaur_id).unwrap();
-                        minotaur
+                        let distance = minotaur
                             .position()
-                            .distance_squared(hero.position().into_direction(&hero.direction()))
-                    })
-                    .min()
-                {
-                    return 16 * 16 / distance_squared.max(1);
+                            .distance_squared(hero.position().into_direction(&hero.direction()));
+
+                        if distance < min_distance {
+                            min_distance = distance;
+                        }
+
+                        if minotaur.is_chasing(*hero_id) {
+                            alarm_level = AlarmLevel::ChasingHero;
+                        } else if minotaur.is_chasing_someone()
+                            && alarm_level < AlarmLevel::ChasingHero
+                        {
+                            alarm_level = AlarmLevel::ChasingOtherHero;
+                        }
+                    }
+
+                    return (alarm_level, min_distance);
                 }
             }
         }
-
-        0
+        (AlarmLevel::NoMinotaurs, usize::MAX)
     }
 
     pub fn add_player(&mut self, player_id: PlayerId, name: &str) {
@@ -140,6 +159,8 @@ impl Game {
 
         let maze = &mut self.mazes.get_mut(&0).unwrap();
         let mut hero = Hero::new(player_id, player_name, maze.hero_starting_position());
+        maze.increase_attempted();
+
         let visible_positions =
             maze.get_and_cache_visible_positions(hero.position(), hero.direction(), hero.view());
         hero.update_past_visible_positions(visible_positions);
@@ -196,6 +217,11 @@ impl Game {
                             .and_modify(|v| v.retain(|id| *id != hero.id()));
                         self.hero_rooms.entry(to).and_modify(|v| v.push(hero.id()));
 
+                        // If hero acquired max vision in this maze, reduce it by one.
+                        if hero.vision() == Hero::MAX_VISION {
+                            hero.decrease_vision();
+                        }
+
                         if from < to {
                             for (idx, exit) in self.mazes[&from].exit_positions().iter().enumerate()
                             {
@@ -210,7 +236,9 @@ impl Game {
                                         );
                                         should_update_top_heros = true;
                                     }
+
                                     let maze = self.mazes.get_mut(&to).unwrap();
+                                    maze.increase_attempted();
 
                                     hero.set_position(maze.entrance_positions()[idx]);
                                     hero.update_past_visible_positions(
@@ -232,6 +260,7 @@ impl Game {
                                     hero.set_maze_id(to);
 
                                     let maze = self.mazes.get_mut(&to).unwrap();
+                                    maze.decrease_passed();
 
                                     hero.set_position(maze.exit_positions()[idx]);
                                     hero.update_past_visible_positions(
@@ -311,8 +340,14 @@ impl Game {
             }
 
             minotaur.kills += catched_heros.len();
-            self.top_minotaurs_map
-                .insert(minotaur.id(), (minotaur.name().to_string(), minotaur.kills));
+            self.top_minotaurs_map.insert(
+                minotaur.id(),
+                (
+                    minotaur.name().to_string(),
+                    minotaur.maze_id(),
+                    minotaur.kills,
+                ),
+            );
             should_update_top_minotaurs = true;
         }
 
@@ -371,9 +406,11 @@ impl Game {
                 player_image.put_pixel(dx as u32, dy as u32, pixel);
             }
 
-            // Add other powerup position
+            // Add  powerup position
             if let Some((x, y)) = maze.power_up_position {
-                if visible_positions.contains(&(x, y)) {
+                if hero.power_up_collected_in_maze().is_none()
+                    && visible_positions.contains(&(x, y))
+                {
                     player_image.put_pixel(x as u32, y as u32, GameColors::POWER_UP);
                 }
             }
@@ -492,6 +529,7 @@ impl Game {
                                 }
                             }
                         } else if maze.is_exit_position(hero.position()) {
+                            maze.increase_passed();
                             hero.state = HeroState::Transitioning {
                                 to: maze_id + 1,
                                 instant: Instant::now(),
@@ -502,7 +540,7 @@ impl Game {
                             }
 
                             if !self.mazes.contains_key(&(maze_id + 1)) {
-                                let mut maze = Maze::random(maze_id + 1);
+                                let mut maze = Maze::random(maze_id + 1, None);
                                 let mut maze_minotaurs = vec![];
                                 for _ in 0..maze.id {
                                     let rng = &mut rand::thread_rng();

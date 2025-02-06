@@ -86,39 +86,6 @@ impl MazeTopology {
     }
 }
 
-#[derive(Debug, Clone, Display, EnumIter, PartialEq)]
-pub enum ColorPalette {
-    Red,
-    Green,
-    Blue,
-}
-
-impl ColorPalette {
-    pub fn color(&self) -> Rgba<u8> {
-        match self {
-            Self::Red => Rgba([208, 28, 28, 125]),
-            Self::Green => Rgba([58, 188, 28, 125]),
-            Self::Blue => Rgba([58, 28, 203, 125]),
-        }
-    }
-
-    pub fn next(&self) -> Self {
-        match self {
-            Self::Red => Self::Green,
-            Self::Green => Self::Blue,
-            Self::Blue => Self::Red,
-        }
-    }
-
-    pub fn previous(&self) -> Self {
-        match self {
-            Self::Red => Self::Blue,
-            Self::Green => Self::Red,
-            Self::Blue => Self::Green,
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct Maze {
     pub id: usize,
@@ -129,12 +96,12 @@ pub struct Maze {
     topology: MazeTopology,
     image: RgbaImage,
     image_style: MazeImageStyle,
-    color_palette: ColorPalette,
     valid_positions: HashSet<Position>,
     entrance: Vec<Position>,
     exit: Vec<Position>,
     pub power_up_position: Option<Position>,
     visible_positions_cache: HashMap<(usize, usize, Direction, View), HashSet<Position>>, // (x, y, direction, type) -> visible positions
+    success_rate: (usize, usize), //pass/attempted
 }
 
 impl Maze {
@@ -235,12 +202,7 @@ impl Maze {
         cells
     }
 
-    fn generate_maze(
-        &mut self,
-        cells: Vec<Cell>,
-        entrance_position: Option<Vec<Position>>,
-        exit_position: Option<Vec<Position>>,
-    ) {
+    fn generate_maze(&mut self, cells: Vec<Cell>, entrance: Option<usize>, exit: Option<usize>) {
         let available_directions = self.topology.available_directions();
 
         self.valid_positions.clear();
@@ -339,18 +301,19 @@ impl Maze {
         let rng = &mut ChaCha8Rng::seed_from_u64(self.random_seed);
 
         // create entrance
-        self.entrance = if let Some(entrance) = entrance_position {
-            entrance
+        let entrance_y = if let Some(y) = entrance {
+            y
         } else {
-            let entrance_y = rng.gen_range(
+            rng.gen_range(
                 Self::WALL_SIZE as usize
                     ..self.height * (Self::CELL_SIZE - Self::WALL_SIZE) as usize
                         - Self::WALL_SIZE as usize
                         - 1,
-            );
-
+            ) / 2
+                * 2
+        };
+        self.entrance = {
             let mut x = 0;
-
             loop {
                 if self.is_valid_position((x, entrance_y))
                     && self.is_valid_position((x, entrance_y + 1))
@@ -358,8 +321,11 @@ impl Maze {
                     break;
                 }
 
-                self.valid_positions.insert((x, entrance_y));
-                self.valid_positions.insert((x, entrance_y + 1));
+                // Starting maze has no entrance
+                if self.id > 0 {
+                    self.valid_positions.insert((x, entrance_y));
+                    self.valid_positions.insert((x, entrance_y + 1));
+                }
                 x += 1;
             }
 
@@ -367,16 +333,18 @@ impl Maze {
         };
 
         // create exit
-        self.exit = if let Some(exit) = exit_position {
-            exit
+        let exit_y = if let Some(y) = exit {
+            y
         } else {
-            let exit_y = rng.gen_range(
+            rng.gen_range(
                 Self::WALL_SIZE as usize
                     ..self.height * (Self::CELL_SIZE - Self::WALL_SIZE) as usize
                         - Self::WALL_SIZE as usize
                         - 1,
-            );
-
+            ) / 2
+                * 2
+        };
+        self.exit = {
             let max_x = (self.width - 1) * (Self::CELL_SIZE - Self::WALL_SIZE) as usize
                 + Self::CELL_SIZE as usize
                 + 1;
@@ -446,7 +414,31 @@ impl Maze {
             .copied()
     }
 
-    pub fn random(id: usize) -> Self {
+    fn color(id: usize) -> Rgba<u8> {
+        let a = (id.min(10) as f64) / 10.0;
+        // red = Rgba([208, 28, 28, 125]);
+        // whiteblueish = Rgba([210, 240, 255, 125]);
+
+        Rgba([
+            (a * 208.0 + (1.0 - a) * 210.0) as u8,
+            (a * 28.0 + (1.0 - a) * 240.0) as u8,
+            (a * 28.0 + (1.0 - a) * 255.0) as u8,
+            125,
+        ])
+    }
+
+    fn entrance_color(id: usize) -> Rgba<u8> {
+        if id == 0 {
+            return Self::color(id);
+        }
+        Rgba([0; 4])
+    }
+
+    fn exit_color(_id: usize) -> Rgba<u8> {
+        Rgba([0; 4])
+    }
+
+    pub fn random(id: usize, entrance: Option<usize>) -> Self {
         let random_seed = ChaCha8Rng::from_entropy().gen();
         let rng = &mut ChaCha8Rng::seed_from_u64(random_seed);
         let width = rng.gen_range(10 + 2 * (id / 4)..=(12 + 2 * (id / 2)).min(32));
@@ -454,20 +446,17 @@ impl Maze {
         let generation_algorithm = MazeGenerationAlgorithm::DepthFirstSearch;
         let topology = MazeTopology::Orthogonal;
         let image_style = MazeImageStyle::Straight;
-        let color_palette = ColorPalette::iter()
-            .nth(id % ColorPalette::iter().count())
-            .unwrap();
+
         Self::new(
             id,
             random_seed,
             width,
             height,
-            None,
+            entrance,
             None,
             generation_algorithm,
             topology,
             image_style,
-            color_palette,
         )
     }
 
@@ -476,19 +465,17 @@ impl Maze {
         random_seed: u64,
         width: usize,
         height: usize,
-        entrance_position: Option<Vec<Position>>,
-        exit_position: Option<Vec<Position>>,
+        entrance: Option<usize>,
+        exit: Option<usize>,
         generation_algorithm: MazeGenerationAlgorithm,
         topology: MazeTopology,
         image_style: MazeImageStyle,
-        color_palette: ColorPalette,
     ) -> Self {
-        let bg_color = color_palette.color();
         // Initialize empty image with maze size.
         let image = RgbaImage::from_pixel(
             (width * (Self::CELL_SIZE - Self::WALL_SIZE) + 2 * Self::WALL_SIZE) as u32,
             (height * (Self::CELL_SIZE - Self::WALL_SIZE) + Self::WALL_SIZE) as u32,
-            bg_color,
+            Self::color(id),
         );
 
         let valid_positions = HashSet::new();
@@ -502,16 +489,16 @@ impl Maze {
             topology,
             image,
             image_style,
-            color_palette,
             valid_positions,
             entrance: Vec::new(),
             exit: Vec::new(),
             power_up_position: None,
             visible_positions_cache: HashMap::new(),
+            success_rate: (0, 0),
         };
 
         let cells = maze.generate_cells();
-        maze.generate_maze(cells, entrance_position, exit_position);
+        maze.generate_maze(cells, entrance, exit);
         maze.power_up_position = maze.random_valid_power_up_position();
         maze.generate_image();
 
@@ -740,15 +727,9 @@ impl Maze {
         &self.image
     }
 
-    pub fn save_image(&self) -> AppResult<()> {
+    pub fn save_image(&self, name: &str) -> AppResult<()> {
         image::save_buffer(
-            &Path::new(
-                format!(
-                    "images/maze_{}_{}_{}.png",
-                    self.generation_algorithm, self.topology, self.image_style
-                )
-                .as_str(),
-            ),
+            &Path::new(name),
             &self.image,
             self.image.width(),
             self.image.height(),
@@ -758,28 +739,28 @@ impl Maze {
     }
 
     pub fn generate_image(&mut self) {
-        let bg_color = self.color_palette.color();
         // Initialize empty image with maze size.
         self.image = RgbaImage::from_pixel(
             (self.width * (Self::CELL_SIZE - Self::WALL_SIZE) + 2 * Self::WALL_SIZE) as u32,
             (self.height * (Self::CELL_SIZE - Self::WALL_SIZE) + Self::WALL_SIZE) as u32,
-            bg_color,
+            Self::color(self.id),
         );
 
         for &(x, y) in self.valid_positions.iter() {
             self.image
-                .put_pixel(x as u32, y as u32, image::Rgba([0, 0, 0, 255]));
+                .put_pixel(x as u32, y as u32, Rgba([0, 0, 0, 255]));
         }
 
-        // color entrance/exit
-        let entrance_color = self.color_palette.previous().color();
+        // color entrance
         for &(x, y) in self.entrance.iter() {
-            self.image.put_pixel(x as u32, y as u32, entrance_color);
+            self.image
+                .put_pixel(x as u32, y as u32, Self::entrance_color(self.id));
         }
 
-        let exit_color = self.color_palette.next().color();
+        //color exit
         for &(x, y) in self.exit.iter() {
-            self.image.put_pixel(x as u32, y as u32, exit_color);
+            self.image
+                .put_pixel(x as u32, y as u32, Self::exit_color(self.id));
         }
     }
 
@@ -810,8 +791,25 @@ impl Maze {
     }
 
     pub fn hero_starting_position(&self) -> Position {
-        let rng = &mut ChaCha8Rng::from_entropy();
-        self.entrance.choose(rng).unwrap().clone()
+        let rng = &mut rand::thread_rng();
+        let &(x, y) = self.entrance.choose(rng).unwrap();
+        (x + 1, y)
+    }
+
+    pub fn increase_attempted(&mut self) {
+        self.success_rate.1 += 1;
+    }
+
+    pub fn decrease_attempted(&mut self) {
+        self.success_rate.1 -= 1;
+    }
+
+    pub fn increase_passed(&mut self) {
+        self.success_rate.0 += 1;
+    }
+
+    pub fn decrease_passed(&mut self) {
+        self.success_rate.0 -= 1;
     }
 }
 
@@ -875,11 +873,25 @@ mod tests {
                         generation_algorithm,
                         topology,
                         image_style,
-                        super::ColorPalette::Red,
                     );
-                    maze.save_image()?;
+                    let name = format!(
+                        "images/maze_{}_{}_{}.png",
+                        maze.generation_algorithm, maze.topology, maze.image_style
+                    );
+                    maze.save_image(&name)?;
                 }
             }
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_random_mazes_image() -> AppResult<()> {
+        for id in 0..10 {
+            let maze = Maze::random(id, None);
+            let name = format!("images/random_{}.png", id);
+            maze.save_image(&name)?;
         }
 
         Ok(())

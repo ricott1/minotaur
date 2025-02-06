@@ -1,3 +1,4 @@
+mod alarm_level;
 mod direction;
 mod entity;
 mod game;
@@ -8,6 +9,7 @@ mod power_up;
 mod utils;
 mod view;
 
+pub use alarm_level::AlarmLevel;
 pub use direction::Direction;
 pub use entity::Entity;
 pub use game::Game;

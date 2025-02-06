@@ -23,7 +23,7 @@ impl GameColors {
     pub const OTHER_HERO: Rgba<u8> = Rgba([3, 255, 3, 255]);
     pub const MINOTAUR: Rgba<u8> = Rgba([225, 203, 3, 255]);
     pub const CHASING_MINOTAUR: Rgba<u8> = Rgba([255, 15, 0, 255]);
-    pub const POWER_UP: Rgba<u8> = Rgba([255, 225, 235, 255]);
+    pub const POWER_UP: Rgba<u8> = Rgba([255, 180, 244, 255]);
 }
 
 pub const MINOTAUR_NAMES: [&'static str; 7] = [

@@ -143,7 +143,11 @@ impl Minotaur {
     }
 
     pub fn is_chasing(&self, player_id: PlayerId) -> bool {
-        self.chasing.is_some() && self.chasing.unwrap() == player_id
+        self.chasing == Some(player_id)
+    }
+
+    pub fn is_chasing_someone(&self) -> bool {
+        self.chasing.is_some()
     }
 }
 
