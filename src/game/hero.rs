@@ -120,7 +120,7 @@ impl Hero {
     }
 
     pub fn past_visibility_duration(&self) -> Duration {
-        Duration::from_secs(10 + self.memory)
+        Duration::from_secs_f32(10.0 + 2.5 * self.memory as f32)
     }
 
     pub fn update_past_visible_positions(&mut self, visible_positions: HashSet<Position>) {

@@ -1,4 +1,4 @@
-use super::{direction::Direction, minotaur::Minotaur, IntoDirection, Position, View};
+use super::{direction::Direction, minotaur::Minotaur, Entity, IntoDirection, Position, View};
 use crate::AppResult;
 use image::{Rgba, RgbaImage};
 use itertools::Itertools;
@@ -508,18 +508,18 @@ impl Maze {
     }
 
     pub fn spawn_minotaur(&mut self, name: String) -> Minotaur {
-        let view = View::minotaur(6 + self.id / 3);
         let mut position = self.random_valid_position();
         while position.distance(self.entrance[0]) < 10.0 {
             position = self.random_valid_position()
         }
-        let direction = Direction::North;
-        self.get_and_cache_visible_positions(position, direction, view);
 
-        let speed = (self.id as u64 / 3).min(5);
-        let aggression = (0.45 + 0.05 * (self.id / 2) as f64).min(1.0);
-        let vision = (3 + self.id / 3).min(6);
-        Minotaur::new(name, self.id, position, speed, vision, aggression)
+        let speed = (self.id as u64 / 3).min(6);
+        let aggression = (0.5 + 0.1 * (self.id / 2) as f64).min(1.0);
+        let vision = (4 + self.id / 3).min(7);
+        let minotaur = Minotaur::new(name, self.id, position, speed, vision, aggression);
+        self.get_and_cache_visible_positions(position, minotaur.direction(), minotaur.view());
+
+        minotaur
     }
 
     pub fn get_and_cache_visible_positions(
@@ -810,6 +810,10 @@ impl Maze {
 
     pub fn decrease_passed(&mut self) {
         self.success_rate.0 -= 1;
+    }
+
+    pub fn success_rate(&self) -> f64 {
+        self.success_rate.0 as f64 / self.success_rate.1 as f64
     }
 }
 

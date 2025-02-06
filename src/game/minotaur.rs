@@ -65,80 +65,53 @@ impl Minotaur {
             return;
         }
 
+        let rng = &mut rand::thread_rng();
+        let (x, y) = self.position;
+
+        let mut available_directions = [
+            Direction::North,
+            Direction::East,
+            Direction::South,
+            Direction::West,
+        ]
+        .iter()
+        .filter(|d| {
+            let new_position = (
+                (x as isize + d.as_offset().0).max(0) as usize,
+                (y as isize + d.as_offset().1).max(0) as usize,
+            );
+            maze.is_valid_minotaur_position(new_position)
+        })
+        .collect_vec();
+
         if let Some(hero_id) = self.chasing {
             // Move toward chased hero
             if let Some(hero) = visible_heros.iter().find(|h| h.id() == hero_id) {
                 println!("{} is chasing {}", self.name, hero.name());
-                let (x, y) = self.position;
-
                 let current_distance = self.position.distance(hero.position());
-
-                let available_directions = [
-                    Direction::North,
-                    Direction::East,
-                    Direction::South,
-                    Direction::West,
-                ]
-                .iter()
-                .filter(|d| {
-                    let new_position = (
-                        (x as isize + d.as_offset().0).max(0) as usize,
-                        (y as isize + d.as_offset().1).max(0) as usize,
-                    );
-                    maze.is_valid_minotaur_position(new_position)
-                        && new_position.distance(hero.position()) < current_distance
-                })
-                .collect_vec();
-
-                if available_directions.len() > 0 {
-                    let rng = &mut rand::thread_rng();
-                    if rng.gen_bool(self.aggression) {
-                        // Pick a random available direction
-                        let direction = available_directions.iter().choose(rng).unwrap();
+                available_directions = available_directions
+                    .iter()
+                    .filter(|d| {
                         let new_position = (
-                            (x as isize + direction.as_offset().0).max(0) as usize,
-                            (y as isize + direction.as_offset().1).max(0) as usize,
+                            (x as isize + d.as_offset().0).max(0) as usize,
+                            (y as isize + d.as_offset().1).max(0) as usize,
                         );
-                        self.position = new_position;
-                        self.last_update_time = Instant::now();
-                    }
-                }
+                        new_position.distance(hero.position()) < current_distance
+                    })
+                    .map(|d| *d)
+                    .collect_vec();
             }
-        } else {
-            // Move in a random direction
-            let (x, y) = self.position;
+        }
 
-            let available_directions = [
-                Direction::North,
-                Direction::East,
-                Direction::South,
-                Direction::West,
-            ]
-            .iter()
-            .filter(|d| {
-                let new_position = (
-                    (x as isize + d.as_offset().0).max(0) as usize,
-                    (y as isize + d.as_offset().1).max(0) as usize,
-                );
-                maze.is_valid_minotaur_position(new_position)
-            })
-            .collect_vec();
-
-            if available_directions.len() > 0 {
-                if rand::random::<bool>() {
-                    // Pick a random available direction
-                    let direction = available_directions
-                        .iter()
-                        .choose(&mut rand::thread_rng())
-                        .unwrap();
-                    let new_position = (
-                        (x as isize + direction.as_offset().0).max(0) as usize,
-                        (y as isize + direction.as_offset().1).max(0) as usize,
-                    );
-                    self.position = new_position;
-                    self.last_update_time = Instant::now();
-                }
-            }
+        if available_directions.len() > 0 && rng.gen_bool(self.aggression) {
+            // Pick a random available direction
+            let direction = available_directions.iter().choose(rng).unwrap();
+            let new_position = (
+                (x as isize + direction.as_offset().0).max(0) as usize,
+                (y as isize + direction.as_offset().1).max(0) as usize,
+            );
+            self.position = new_position;
+            self.last_update_time = Instant::now();
         }
     }
 

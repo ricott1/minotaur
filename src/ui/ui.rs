@@ -100,20 +100,15 @@ fn render_header(frame: &mut Frame, game: &Game, player_id: PlayerId, area: Rect
     ];
 
     if let Some(hero) = game.get_hero(&player_id) {
+        let maze = game.get_maze(&hero.maze_id()).unwrap();
+
         lines.push(Line::from(vec![
             Span::styled(format!("{} - ", hero.name()), GameColors::HERO.to_color()),
             Span::raw(format!(
-                "Room {}@{:8} - ",
+                "Room {}@{:8} - Success rate {:.2}%",
                 hero.maze_id() + 1,
-                format!("{:?}", hero.position())
-            )),
-            Span::raw(format!(
-                "Power up {}collected",
-                if let Some(power_up) = hero.power_up_collected_in_maze() {
-                    format!("({}) ", power_up)
-                } else {
-                    "not ".to_string()
-                }
+                format!("{:?}", hero.position()),
+                maze.success_rate()
             )),
         ]));
 
@@ -128,10 +123,26 @@ fn render_header(frame: &mut Frame, game: &Game, player_id: PlayerId, area: Rect
                 if num_minotaurs == 1 { "" } else { "s" }
             )),
             Span::styled(
-                format!("{}", minoradar),
+                format!("{:8} ", minoradar),
                 Style::new().fg(alarm_level.rgba().to_color()),
             ),
         ]));
+
+        lines.push(Line::from(Span::raw(format!(
+            "Power up {}collected",
+            if let Some(power_up) = hero.power_up_collected_in_maze() {
+                format!("({}) ", power_up)
+            } else {
+                "not ".to_string()
+            }
+        ))));
+
+        if hero.vision() > 4 {
+            lines.push(Line::from(vec![Span::raw(format!(
+                "{}",
+                (min_distance_squared as f64).sqrt().round() as usize
+            ))]));
+        }
     }
 
     frame.render_widget(Paragraph::new(lines), area);
@@ -185,7 +196,7 @@ fn render_sidebar(
                 .take(4)
                 .map(|(id, name, maze_id)| {
                     Line::from(Span::styled(
-                        format!("{}: r{}", name, maze_id + 1),
+                        format!("{:14} r{}", name, maze_id + 1),
                         if game.get_hero(id).is_some() {
                             if *id == hero.id() {
                                 Style::new().fg(GameColors::HERO.to_color())
@@ -213,7 +224,7 @@ fn render_sidebar(
                 .iter()
                 .take(4)
                 .map(|(_, name, maze_id, kills)| {
-                    Line::from(format!("{}: k{} r{}", name, kills, maze_id + 1))
+                    Line::from(format!("{:14} k{} r{}", name, kills, maze_id + 1))
                 })
                 .collect_vec();
 
@@ -313,10 +324,18 @@ pub fn render(
         .collect::<HashMap<(u32, u32), char>>();
 
     for &(x, y) in maze.entrance_positions().iter() {
+        if maze.id > 0 {
+            for (idx, c) in (maze.id + 1 - 1).to_string().chars().enumerate() {
+                override_positions.insert((x as u32 + idx as u32 + 1, y as u32), c);
+            }
+        }
         override_positions.insert((x as u32, y as u32), '←');
     }
 
     for &(x, y) in maze.exit_positions().iter() {
+        for (idx, c) in (maze.id + 1 + 1).to_string().chars().rev().enumerate() {
+            override_positions.insert((x as u32 - idx as u32 - 1, y as u32), c);
+        }
         override_positions.insert((x as u32, y as u32), '→');
     }
 
