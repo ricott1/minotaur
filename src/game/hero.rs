@@ -77,6 +77,9 @@ pub struct Hero {
 impl Hero {
     pub const MAX_SPEED: u64 = 8;
     pub const MAX_VISION: usize = 8;
+    pub const INITIAL_SPEED: u64 = 4;
+    pub const INITIAL_VISION: usize = 1;
+    pub const INITIAL_MEMORY: u64 = 0;
     pub fn new(id: PlayerId, name: String, position: Position) -> Self {
         let state = HeroState::InMaze;
         Self {
@@ -87,9 +90,9 @@ impl Hero {
             record: 0,
             position,
             direction: Direction::East,
-            vision: 1,
-            speed: 4,
-            memory: 0,
+            vision: Self::INITIAL_VISION,
+            speed: Self::INITIAL_SPEED,
+            memory: Self::INITIAL_MEMORY,
             past_visible_positions: HashMap::new(),
             last_move_time: Instant::now(),
             collected_power_ups: HashMap::new(),
@@ -101,10 +104,13 @@ impl Hero {
         self.state = HeroState::InMaze;
         self.maze_id = 0;
         self.position = position;
-        self.vision = 2;
-        self.speed = 8;
+        self.direction = Direction::East;
+        self.vision = Self::INITIAL_VISION;
+        self.speed = Self::INITIAL_SPEED;
+        self.memory = Self::INITIAL_MEMORY;
         self.past_visible_positions.clear();
-        self.last_move_time = Instant::now()
+        self.last_move_time = Instant::now();
+        self.collected_power_ups.clear();
     }
 
     pub fn is_dead(&self) -> bool {

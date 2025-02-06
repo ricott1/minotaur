@@ -108,7 +108,7 @@ fn render_header(frame: &mut Frame, game: &Game, player_id: PlayerId, area: Rect
                 "Room {}@{:8} - Success rate {:.2}%",
                 hero.maze_id() + 1,
                 format!("{:?}", hero.position()),
-                maze.success_rate()
+                maze.success_rate() * 100.0
             )),
         ]));
 
@@ -116,7 +116,8 @@ fn render_header(frame: &mut Frame, game: &Game, player_id: PlayerId, area: Rect
         let (alarm_level, min_distance_squared) = game.alarm_level(&hero.id());
         let radar_power = 16 * 16 / min_distance_squared.max(1);
         let minoradar: String = MINORADAR.iter().take(radar_power).map(|s| *s).collect();
-        lines.push(Line::from(vec![
+
+        let mut line = vec![
             Span::raw(format!(
                 "{} minotaur{}  ",
                 num_minotaurs,
@@ -126,7 +127,15 @@ fn render_header(frame: &mut Frame, game: &Game, player_id: PlayerId, area: Rect
                 format!("{:8} ", minoradar),
                 Style::new().fg(alarm_level.rgba().to_color()),
             ),
-        ]));
+        ];
+
+        if num_minotaurs > 0 && hero.vision() > 4 {
+            line.push(Span::raw(format!(
+                "{}",
+                (min_distance_squared as f64).sqrt().round() as usize
+            )))
+        }
+        lines.push(Line::from(line));
 
         lines.push(Line::from(Span::raw(format!(
             "Power up {}collected",
@@ -136,13 +145,6 @@ fn render_header(frame: &mut Frame, game: &Game, player_id: PlayerId, area: Rect
                 "not ".to_string()
             }
         ))));
-
-        if hero.vision() > 4 {
-            lines.push(Line::from(vec![Span::raw(format!(
-                "{}",
-                (min_distance_squared as f64).sqrt().round() as usize
-            ))]));
-        }
     }
 
     frame.render_widget(Paragraph::new(lines), area);
