@@ -75,6 +75,11 @@ impl AppClient {
 impl server::Handler for AppClient {
     type Error = anyhow::Error;
 
+    async fn auth_none(&mut self, user: &str) -> Result<Auth, Self::Error> {
+        self.username = user.to_string();
+        Ok(Auth::Accept)
+    }
+
     async fn auth_password(&mut self, user: &str, _password: &str) -> Result<Auth, Self::Error> {
         self.username = user.to_string();
         Ok(Auth::Accept)

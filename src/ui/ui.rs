@@ -103,9 +103,9 @@ fn render_header(frame: &mut Frame, game: &Game, player_id: PlayerId, area: Rect
         let maze = game.get_maze(&hero.maze_id()).unwrap();
 
         lines.push(Line::from(vec![
-            Span::styled(format!("{} - ", hero.name()), GameColors::HERO.to_color()),
+            Span::styled(format!("{}  ", hero.name()), GameColors::HERO.to_color()),
             Span::raw(format!(
-                "Room {}@{:8} - Success rate {:.2}%",
+                "Room {}@{:8} - Pass rate {:.2}%",
                 hero.maze_id() + 1,
                 format!("{:?}", hero.position()),
                 maze.success_rate() * 100.0
@@ -342,7 +342,7 @@ pub fn render(
     }
 
     frame.render_widget(
-        Paragraph::new(img_to_lines(&image, override_positions)).centered(),
+        Paragraph::new(img_to_lines(&image, override_positions)),
         h_split[1],
     );
 
