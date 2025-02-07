@@ -431,10 +431,14 @@ impl Maze {
         if id == 0 {
             return Self::color(id);
         }
-        Rgba([0; 4])
+        Self::background_color()
     }
 
     fn exit_color(_id: usize) -> Rgba<u8> {
+        Rgba([0; 4])
+    }
+
+    pub fn background_color() -> Rgba<u8> {
         Rgba([0; 4])
     }
 
@@ -739,16 +743,8 @@ impl Maze {
     }
 
     pub fn generate_image(&mut self) {
-        // Initialize empty image with maze size.
-        self.image = RgbaImage::from_pixel(
-            (self.width * (Self::CELL_SIZE - Self::WALL_SIZE) + 2 * Self::WALL_SIZE) as u32,
-            (self.height * (Self::CELL_SIZE - Self::WALL_SIZE) + Self::WALL_SIZE) as u32,
-            Self::color(self.id),
-        );
-
         for &(x, y) in self.valid_positions.iter() {
-            self.image
-                .put_pixel(x as u32, y as u32, Rgba([0, 0, 0, 255]));
+            self.image.put_pixel(x as u32, y as u32, Rgba([0; 4]));
         }
 
         // color entrance

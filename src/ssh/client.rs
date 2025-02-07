@@ -6,13 +6,11 @@ use crate::tui::Tui;
 use crate::AppResult;
 use anyhow::anyhow;
 use anyhow::Context;
-use async_trait::async_trait;
 use russh::{
     server::{self, *},
     ChannelId,
 };
 use russh::{Channel, Pty};
-use russh_keys::PublicKey;
 use std::collections::HashMap;
 use tokio::sync::mpsc::Sender;
 use tokio_util::sync::CancellationToken;
@@ -71,7 +69,6 @@ impl AppClient {
     }
 }
 
-#[async_trait]
 impl server::Handler for AppClient {
     type Error = anyhow::Error;
 
@@ -88,7 +85,7 @@ impl server::Handler for AppClient {
     async fn auth_publickey(
         &mut self,
         user: &str,
-        _public_key: &PublicKey,
+        _public_key: &russh::keys::PublicKey,
     ) -> Result<Auth, Self::Error> {
         self.username = user.to_string();
         Ok(Auth::Accept)

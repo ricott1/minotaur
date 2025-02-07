@@ -12,8 +12,7 @@ pub enum HeroCommand {
     Move { direction: Direction },
     TurnClockwise,
     TurnCounterClockwise,
-    DisplayLeaders,
-    DisplayHelp,
+    CycleUiOptions,
 }
 
 impl HeroCommand {
@@ -22,8 +21,7 @@ impl HeroCommand {
             KeyCode::Char(c) => match c {
                 'a' => Some(Self::TurnCounterClockwise),
                 'd' => Some(Self::TurnClockwise),
-                'l' => Some(Self::DisplayLeaders),
-                'h' => Some(Self::DisplayHelp),
+                'w' => Some(Self::CycleUiOptions),
                 _ => None,
             },
             KeyCode::Up => Some(Self::Move {
@@ -49,11 +47,19 @@ pub enum HeroState {
     Transitioning { to: usize, instant: Instant },
     Dead { instant: Instant },
 }
-
 #[derive(Debug, Clone, Copy, Display, PartialEq)]
 pub enum UiOptions {
-    Leaders,
-    Help,
+    Dark,
+    Light,
+}
+
+impl UiOptions {
+    pub fn next(&self) -> Self {
+        match self {
+            Self::Dark => Self::Light,
+            Self::Light => Self::Dark,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -96,7 +102,7 @@ impl Hero {
             past_visible_positions: HashMap::new(),
             last_move_time: Instant::now(),
             collected_power_ups: HashMap::new(),
-            ui_options: UiOptions::Help,
+            ui_options: UiOptions::Dark,
         }
     }
 
@@ -130,13 +136,17 @@ impl Hero {
     }
 
     pub fn update_past_visible_positions(&mut self, visible_positions: HashSet<Position>) {
+        let duration = self.past_visibility_duration();
+
         let past_visible_positions = self
             .past_visible_positions
             .entry(self.maze_id)
             .or_insert(HashMap::new());
+
         for &position in visible_positions.iter() {
             past_visible_positions.insert(position, Instant::now());
         }
+        past_visible_positions.retain(|_, instant| instant.elapsed() < duration);
     }
 
     pub fn past_visible_positions(&self) -> &HashMap<Position, Instant> {

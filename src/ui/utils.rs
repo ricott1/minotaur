@@ -1,14 +1,14 @@
-use std::collections::HashMap;
-
-use image::{Rgb, Rgba, RgbaImage};
+use image::{Pixel, Rgba, RgbaImage};
 use ratatui::{
     style::{Color, Style},
     text::{Line, Span},
 };
+use std::collections::HashMap;
 
 pub fn img_to_lines<'a>(
     img: &RgbaImage,
     image_char_overrides: HashMap<(u32, u32), char>,
+    background_color: Rgba<u8>,
 ) -> Vec<Line<'a>> {
     let mut lines: Vec<Line> = vec![];
     let width = img.width();
@@ -41,20 +41,26 @@ pub fn img_to_lines<'a>(
             }
 
             // both pixels are transparent
-            if top_pixel[3] == 0 && btm_pixel[3] == 0 {
+            if top_pixel.is_transparent(background_color)
+                && btm_pixel.is_transparent(background_color)
+            {
                 line.push(Span::raw(" "));
                 continue;
             }
 
             // render top pixel
-            if top_pixel[3] > 0 && btm_pixel[3] == 0 {
+            if !top_pixel.is_transparent(background_color)
+                && btm_pixel.is_transparent(background_color)
+            {
                 let color = top_pixel.to_color();
                 line.push(Span::styled("▀", Style::default().fg(color)));
                 continue;
             }
 
             // render bottom pixel
-            if top_pixel[3] == 0 && btm_pixel[3] > 0 {
+            if top_pixel.is_transparent(background_color)
+                && !btm_pixel.is_transparent(background_color)
+            {
                 let color = btm_pixel.to_color();
                 line.push(Span::styled("▄", Style::default().fg(color)));
                 continue;
@@ -91,13 +97,7 @@ pub fn img_to_lines<'a>(
 
 pub trait RataColor {
     fn to_color(&self) -> Color;
-}
-
-impl RataColor for Rgb<u8> {
-    fn to_color(&self) -> Color {
-        let [r, g, b] = self.0;
-        Color::Rgb(r, g, b)
-    }
+    fn is_transparent(&self, background_color: Self) -> bool;
 }
 
 impl RataColor for Rgba<u8> {
@@ -109,5 +109,9 @@ impl RataColor for Rgba<u8> {
         let b = (b as f32 * alpha) as u8;
 
         Color::Rgb(r, g, b)
+    }
+
+    fn is_transparent(&self, background_color: Self) -> bool {
+        self[3] == 0 || self.to_rgb() == background_color.to_rgb()
     }
 }

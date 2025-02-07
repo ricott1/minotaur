@@ -5,8 +5,6 @@ use crate::tui::Tui;
 use crate::AppResult;
 use crossterm::event::KeyCode;
 use itertools::Either;
-use rand::SeedableRng;
-use rand_chacha::ChaCha8Rng;
 use russh::server::{self};
 use russh::server::{Config, Server};
 use std::collections::HashMap;
@@ -21,7 +19,7 @@ use tokio::task;
 use tokio::{select, time};
 use tokio_util::sync::CancellationToken;
 
-fn save_keys(signing_key: &russh_keys::PrivateKey) -> AppResult<()> {
+fn save_keys(signing_key: &russh::keys::PrivateKey) -> AppResult<()> {
     let file = File::create::<&str>("./keys".into())?;
     assert!(file.metadata()?.is_file());
     let mut buffer = std::io::BufWriter::new(file);
@@ -30,9 +28,9 @@ fn save_keys(signing_key: &russh_keys::PrivateKey) -> AppResult<()> {
     Ok(())
 }
 
-fn load_keys() -> AppResult<russh_keys::PrivateKey> {
+fn load_keys() -> AppResult<russh::keys::PrivateKey> {
     let bytes = std::fs::read("./keys")?;
-    let private_key = russh_keys::PrivateKey::from_bytes(&bytes)?;
+    let private_key = russh::keys::PrivateKey::from_bytes(&bytes)?;
     println!("Loaded keypair for SSH server.");
     Ok(private_key)
 }
@@ -61,9 +59,9 @@ impl AppServer {
         );
 
         let private_key = load_keys().unwrap_or_else(|_| {
-            let key = russh_keys::PrivateKey::random(
-                &mut ChaCha8Rng::from_entropy(),
-                russh_keys::Algorithm::Ed25519,
+            let key = russh::keys::PrivateKey::random(
+                &mut rand::thread_rng(),
+                russh::keys::Algorithm::Ed25519,
             )
             .expect("Failed to generate SSH keys.");
 

@@ -1,11 +1,11 @@
 use super::{
     entity::Entity,
-    hero::{HeroCommand, HeroState, UiOptions},
+    hero::{HeroCommand, HeroState},
     minotaur::Minotaur,
     utils::{random_minotaur_name, to_player_name},
     AlarmLevel, GameColors, Hero, IntoDirection, Maze,
 };
-use crate::{AppResult, PlayerId};
+use crate::{ui::utils::RataColor, AppResult, PlayerId};
 use anyhow::anyhow;
 use image::{Rgba, RgbaImage};
 use itertools::Itertools;
@@ -359,6 +359,63 @@ impl Game {
         }
     }
 
+    pub fn image_char_overrides(
+        &self,
+        player_id: PlayerId,
+        image: &RgbaImage,
+    ) -> AppResult<HashMap<(u32, u32), char>> {
+        let hero = if let Some(hero) = self.get_hero(&player_id) {
+            hero
+        } else {
+            return Err(anyhow!("Missing hero {}", player_id));
+        };
+
+        let maze = if let Some(maze) = self.mazes.get(&hero.maze_id()) {
+            maze
+        } else {
+            return Err(anyhow!("Missing maze {}", hero.maze_id()));
+        };
+
+        // Override empty positions.
+        let visible_positions =
+            maze.get_cached_visible_positions(hero.position(), hero.direction(), hero.view());
+        let mut override_positions = visible_positions
+            .iter()
+            .filter(|(x, y)| {
+                image
+                    .get_pixel(*x as u32, *y as u32)
+                    .is_transparent(Maze::background_color())
+            })
+            .map(|&(x, y)| ((x as u32, y as u32), '·'))
+            .collect::<HashMap<(u32, u32), char>>();
+
+        for &(x, y) in maze.entrance_positions().iter() {
+            if !visible_positions.contains(&(x, y)) {
+                continue;
+            }
+
+            if maze.id > 0 {
+                for (idx, c) in (maze.id + 1 - 1).to_string().chars().enumerate() {
+                    override_positions.insert((x as u32 + idx as u32 + 1, y as u32), c);
+                }
+            }
+            override_positions.insert((x as u32, y as u32), '←');
+        }
+
+        for &(x, y) in maze.exit_positions().iter() {
+            if !visible_positions.contains(&(x, y)) {
+                continue;
+            }
+
+            for (idx, c) in (maze.id + 1 + 1).to_string().chars().rev().enumerate() {
+                override_positions.insert((x as u32 - idx as u32 - 1, y as u32), c);
+            }
+            override_positions.insert((x as u32, y as u32), '→');
+        }
+
+        Ok(override_positions)
+    }
+
     pub fn draw(&self, player_id: PlayerId) -> AppResult<RgbaImage> {
         //FIXME: if hero is transitioning from one maze to the other, join the two maze images (and crop them to simulate the exit->entrance transition)
         if let Some(hero) = self.heros.get(&player_id) {
@@ -369,11 +426,8 @@ impl Game {
             let maze_image = maze.image();
 
             // The base player image is black.
-            let mut player_image = RgbaImage::from_pixel(
-                maze_image.width(),
-                maze_image.height(),
-                Rgba([0, 0, 0, 255]),
-            );
+            let mut player_image =
+                RgbaImage::from_pixel(maze_image.width(), maze_image.height(), Rgba([0; 4]));
 
             let visible_positions =
                 maze.get_cached_visible_positions(hero.position(), hero.direction(), hero.view());
@@ -384,7 +438,7 @@ impl Game {
 
                 let is_valid = maze.is_valid_position((dx, dy));
 
-                let base_alpha = if is_valid { 50 } else { 125 };
+                let base_alpha = if is_valid { 0 } else { 125 };
                 let mut alpha = if instant.elapsed() < hero.past_visibility_duration() {
                     base_alpha
                         - (base_alpha as f64 * instant.elapsed().as_millis() as f64
@@ -399,7 +453,7 @@ impl Game {
                     let distance = hero.position().distance((dx, dy));
                     alpha += ((255.0 - alpha as f64)
                         * (1.0 - distance / hero.view().radius() as f64))
-                        as u8
+                        as u8;
                 }
 
                 let pixel = Rgba([base_color[0], base_color[1], base_color[2], alpha]);
@@ -589,8 +643,7 @@ impl Game {
                         ));
                     }
 
-                    HeroCommand::DisplayHelp => hero.ui_options = UiOptions::Help,
-                    HeroCommand::DisplayLeaders => hero.ui_options = UiOptions::Leaders,
+                    HeroCommand::CycleUiOptions => hero.ui_options = hero.ui_options.next(),
                 }
             }
             _ => {}

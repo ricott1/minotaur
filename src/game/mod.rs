@@ -13,7 +13,7 @@ pub use alarm_level::AlarmLevel;
 pub use direction::Direction;
 pub use entity::Entity;
 pub use game::Game;
-pub use hero::{Hero, HeroCommand, UiOptions};
+pub use hero::{Hero, HeroCommand};
 pub use maze::Maze;
 pub use power_up::PowerUp;
 pub use utils::GameColors;
