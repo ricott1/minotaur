@@ -22,6 +22,19 @@ impl HeroCommand {
                 'a' => Some(Self::TurnCounterClockwise),
                 'd' => Some(Self::TurnClockwise),
                 'w' => Some(Self::CycleUiOptions),
+
+                'h' => Some(Self::Move {
+                    direction: Direction::West,
+                }),
+                'j' => Some(Self::Move {
+                    direction: Direction::South,
+                }),
+                'k' => Some(Self::Move {
+                    direction: Direction::North,
+                }),
+                'l' => Some(Self::Move {
+                    direction: Direction::East,
+                }),
                 _ => None,
             },
             KeyCode::Up => Some(Self::Move {
