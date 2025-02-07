@@ -282,8 +282,8 @@ pub fn render(
         let width = 32;
         let height = 6;
         let popup = Rect::new(
-            h_split[1].x + (h_split[1].width - width) / 2,
-            h_split[1].y + (h_split[1].height - height) / 2,
+            v_split[1].x + (v_split[1].width.saturating_sub(width)) / 2,
+            v_split[1].y + (v_split[1].height.saturating_sub(height)) / 2,
             width,
             height,
         );
