@@ -1,4 +1,3 @@
-use crate::constants::UI_SCREEN_SIZE;
 use crate::game::Game;
 use crate::ssh::SSHWriterProxy;
 use crate::ui;
@@ -45,6 +44,8 @@ impl Tui {
     pub fn new(
         id: PlayerId,
         username: String,
+        width: u16,
+        height: u16,
         writer: SSHWriterProxy,
         client_shutdown: CancellationToken,
     ) -> AppResult<Self> {
@@ -53,8 +54,8 @@ impl Tui {
             viewport: Viewport::Fixed(Rect {
                 x: 0,
                 y: 0,
-                width: UI_SCREEN_SIZE.0,
-                height: UI_SCREEN_SIZE.1,
+                width,
+                height,
             }),
         };
 

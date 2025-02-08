@@ -159,7 +159,7 @@ fn render_sidebar(frame: &mut Frame, game: &Game, hero: &Hero, area: Rect) -> Ap
     let lines = vec![
         Line::from("←↑→↓: move"),
         Line::from("'a'/'d': rotate"),
-        Line::from(""),
+        Line::from("'q'/Esc: quit"),
         Line::from(vec![
             Span::styled("██", GameColors::HERO.to_color()),
             Span::raw(format!(" {:12}", "Hero")),
@@ -254,7 +254,7 @@ pub fn render(
     if frame.area().width < UI_SCREEN_SIZE.0 || frame.area().height < UI_SCREEN_SIZE.1 {
         frame.render_widget(
             Paragraph::new(format!(
-                " Frame size {}x{} is smaller than the minimum size {}x{}.",
+                " Frame size {}x{} is smaller than the minimum size {}x{}.\nPlease resize it or exit with 'q'.",
                 frame.area().width,
                 frame.area().height,
                 UI_SCREEN_SIZE.0,
