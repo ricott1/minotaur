@@ -1,5 +1,6 @@
 use super::utils::{img_to_lines, RataColor};
 use crate::{
+    constants::UI_SCREEN_SIZE,
     game::{Entity, Game, GameColors, Hero, Maze},
     AppResult, PlayerId,
 };
@@ -10,7 +11,7 @@ use ratatui::{
     style::{Color, Style, Styled},
     symbols::border,
     text::{Line, Span},
-    widgets::{Block, BorderType, Paragraph},
+    widgets::{Block, BorderType, Paragraph, Wrap},
     Frame,
 };
 use std::time::{Duration, Instant};
@@ -91,7 +92,7 @@ fn render_header(frame: &mut Frame, game: &Game, hero: &Hero, area: Rect) -> App
             "There {} {} hero{} in the labirynth...",
             if number_of_players == 1 { "is" } else { "are" },
             number_of_players,
-            if number_of_players == 1 { "" } else { "es" }
+            if number_of_players == 1 { "" } else { "es" },
         )),
         Line::from(vec![
             Span::styled(format!("{}  ", hero.name()), GameColors::HERO.to_color()),
@@ -247,6 +248,22 @@ pub fn render(
 ) -> AppResult<()> {
     if start_instant.elapsed() < Duration::from_millis(1500) {
         frame.render_widget(title_paragraph(), frame.area().inner(Margin::new(4, 2)));
+        return Ok(());
+    }
+
+    if frame.area().width < UI_SCREEN_SIZE.0 || frame.area().height < UI_SCREEN_SIZE.1 {
+        frame.render_widget(
+            Paragraph::new(format!(
+                " Frame size {}x{} is smaller than the minimum size {}x{}.",
+                frame.area().width,
+                frame.area().height,
+                UI_SCREEN_SIZE.0,
+                UI_SCREEN_SIZE.1
+            ))
+            .centered()
+            .wrap(Wrap { trim: true }),
+            frame.area(),
+        );
         return Ok(());
     }
 

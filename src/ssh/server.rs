@@ -183,6 +183,12 @@ impl AppServer {
                                     }
                                 }
                             }
+
+                            TerminalEvent::Resize{width, height} => {
+                                if let Some(tui) = tuis.get_mut(&player_id).as_mut() {
+                                    let _ = tui.resize(width, height);
+                                }
+                            },
                             _ => {}
                         }
                     }

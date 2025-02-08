@@ -7,7 +7,6 @@ use crate::PlayerId;
 use crossterm::cursor::{Hide, Show};
 use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
 use crossterm::terminal::Clear;
-use crossterm::terminal::SetTitle;
 use crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen};
 use ratatui::layout::Rect;
 use ratatui::prelude::CrosstermBackend;
@@ -32,7 +31,6 @@ impl Tui {
             self.terminal.backend_mut(),
             EnterAlternateScreen,
             EnableMouseCapture,
-            SetTitle("Rebels in the sky"),
             Clear(crossterm::terminal::ClearType::All),
             Hide
         )?;
@@ -87,12 +85,12 @@ impl Tui {
         Ok(())
     }
 
-    pub fn resize(&mut self, size: (u16, u16)) -> AppResult<()> {
+    pub fn resize(&mut self, width: u16, height: u16) -> AppResult<()> {
         self.terminal.resize(Rect {
             x: 0,
             y: 0,
-            width: size.0,
-            height: size.1,
+            width,
+            height,
         })?;
         Ok(())
     }

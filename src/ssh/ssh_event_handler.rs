@@ -56,6 +56,10 @@ impl SSHEventHandler {
 
                                         }
                                     }
+                                    CrosstermEvent::Resize(w, h) =>
+                                    {
+                                        terminal_event_sender.send((player_id, TerminalEvent::Resize{width:w, height:h})).await.expect("Cannot send over channel");
+                                    }
                                     _ => {}
                                 };
                             }
