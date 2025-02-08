@@ -313,7 +313,8 @@ impl Maze {
                 * 2
         };
         self.entrance = {
-            let mut x = 0;
+            let starting_x = if self.id == 0 { 1 } else { 0 };
+            let mut x = starting_x;
             loop {
                 if self.is_valid_position((x, entrance_y))
                     && self.is_valid_position((x, entrance_y + 1))
@@ -321,15 +322,13 @@ impl Maze {
                     break;
                 }
 
-                // Starting maze has no entrance
-                if self.id > 0 {
-                    self.valid_positions.insert((x, entrance_y));
-                    self.valid_positions.insert((x, entrance_y + 1));
-                }
+                self.valid_positions.insert((x, entrance_y));
+                self.valid_positions.insert((x, entrance_y + 1));
+
                 x += 1;
             }
 
-            vec![(0, entrance_y), (0, entrance_y + 1)]
+            vec![(starting_x, entrance_y), (starting_x, entrance_y + 1)]
         };
 
         // create exit
@@ -364,10 +363,10 @@ impl Maze {
         };
 
         // Add random rooms. The number of rooms deoends on the maze size.
-        let number_of_rooms = rng.gen_range(4..=((self.width + self.height) / 3).max(5));
+        let number_of_rooms = rng.gen_range(4..=((self.width + self.height) / 2).max(5));
         for _ in 0..number_of_rooms {
-            let room_width = rng.gen_range(4..=((self.width + self.height) / 8).max(5));
-            let room_height = rng.gen_range(4..=((self.width + self.height) / 8).max(5));
+            let room_width = rng.gen_range(4..=((self.width + self.height) / 6).max(5));
+            let room_height = rng.gen_range(4..=((self.width + self.height) / 6).max(5));
             let (room_x, room_y) = self.cell_image_position((
                 rng.gen_range(
                     Self::WALL_SIZE
@@ -788,8 +787,7 @@ impl Maze {
 
     pub fn hero_starting_position(&self) -> Position {
         let rng = &mut rand::thread_rng();
-        let &(x, y) = self.entrance.choose(rng).unwrap();
-        (x + 1, y)
+        *self.entrance.choose(rng).unwrap()
     }
 
     pub fn increase_attempted(&mut self) {
