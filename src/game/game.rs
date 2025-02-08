@@ -398,8 +398,8 @@ impl Game {
                 for (idx, c) in (maze.id + 1 - 1).to_string().chars().enumerate() {
                     override_positions.insert((x as u32 + idx as u32 + 1, y as u32), c);
                 }
+                override_positions.insert((x as u32, y as u32), '←');
             }
-            override_positions.insert((x as u32, y as u32), '←');
         }
 
         for &(x, y) in maze.exit_positions().iter() {
