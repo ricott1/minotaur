@@ -82,6 +82,7 @@ pub struct Hero {
     pub state: HeroState,
     maze_id: usize,
     pub record: usize,
+    pub timer: Instant,
     position: Position,
     direction: Direction,
     vision: usize,
@@ -107,6 +108,7 @@ impl Hero {
             state,
             maze_id: 0,
             record: 0,
+            timer: Instant::now(),
             position,
             direction: Direction::East,
             vision: Self::INITIAL_VISION,
@@ -122,6 +124,7 @@ impl Hero {
     pub fn reset(&mut self, position: Position) {
         self.state = HeroState::InMaze;
         self.maze_id = 0;
+        self.timer = Instant::now();
         self.position = position;
         self.direction = Direction::East;
         self.vision = Self::INITIAL_VISION;
