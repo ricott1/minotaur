@@ -98,6 +98,8 @@ impl Tui {
     }
 
     pub async fn exit(&mut self) -> AppResult<()> {
+        self.client_shutdown.cancel();
+
         crossterm::execute!(
             self.terminal.backend_mut(),
             LeaveAlternateScreen,
@@ -107,7 +109,6 @@ impl Tui {
         )?;
 
         self.terminal.backend_mut().writer_mut().send().await?;
-        self.client_shutdown.cancel();
 
         Ok(())
     }

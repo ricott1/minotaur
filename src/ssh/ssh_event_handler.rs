@@ -61,7 +61,7 @@ impl SSHEventHandler {
                             }
                         }
                         _ = client_shutdown.cancelled() => {
-                                println!("Shutting down.");
+                                println!("Shutting down client.");
                                 break;
                         },
 

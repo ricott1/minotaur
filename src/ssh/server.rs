@@ -12,7 +12,7 @@ use std::fs::File;
 use std::io::Write;
 use std::pin::pin;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::sync::mpsc::Sender;
 use tokio::sync::mpsc::{self, Receiver};
 use tokio::task;
@@ -43,6 +43,7 @@ pub struct AppServer {
 }
 
 impl AppServer {
+    const INACTIVITY_TIMEOUT: Duration = Duration::from_secs(60);
     pub fn new(port: u16) -> Self {
         Self {
             port,
@@ -70,7 +71,7 @@ impl AppServer {
         });
 
         let config = Config {
-            inactivity_timeout: Some(std::time::Duration::from_secs(3600)),
+            inactivity_timeout: Some(std::time::Duration::from_secs(120)),
             auth_rejection_time: std::time::Duration::from_secs(3),
             auth_rejection_time_initial: Some(std::time::Duration::from_secs(0)),
             keys: vec![private_key],
@@ -78,7 +79,6 @@ impl AppServer {
         };
 
         let shutdown = self.shutdown.clone();
-        let ready_channel_shutdown = CancellationToken::new();
 
         let (client_sender, client_receiver) = mpsc::channel(1);
         self.client_sender = Some(client_sender);
@@ -86,11 +86,13 @@ impl AppServer {
         let (terminal_event_sender, terminal_event_receiver) = mpsc::channel(1);
         self.terminal_event_sender = Some(terminal_event_sender);
 
-        Self::spawn_game(client_receiver, terminal_event_receiver);
+        Self::spawn_game(
+            client_receiver,
+            terminal_event_receiver,
+            self.shutdown.clone(),
+        );
 
         let server = self.run_on_address(Arc::new(config), ("0.0.0.0", self.port));
-
-        let server_ready_channel_shutdown = ready_channel_shutdown.clone();
 
         let shutdown_cancelled = shutdown.cancelled();
 
@@ -107,7 +109,6 @@ impl AppServer {
             Either::Left(result) => Ok(result?),
             Either::Right(_) => {
                 println!("Shutting down");
-                server_ready_channel_shutdown.cancel();
                 time::sleep(Duration::from_secs(1)).await;
 
                 Ok(())
@@ -118,20 +119,21 @@ impl AppServer {
     fn spawn_game(
         mut client_receiver: Receiver<Tui>,
         mut terminal_event_receiver: Receiver<(PlayerId, TerminalEvent)>,
+        server_shutdown: CancellationToken,
     ) {
         task::spawn(async move {
-            let client_shutdown = CancellationToken::new();
-
             let mut game = Game::new();
             let mut update_ticker = tokio::time::interval(Game::update_time_step());
             let mut draw_ticker = tokio::time::interval(Game::draw_time_step());
 
             let mut tuis: HashMap<PlayerId, Tui> = HashMap::new();
+            let mut last_moves: HashMap<PlayerId, Instant> = HashMap::new();
 
             loop {
                 select! {
                     Some(tui) = client_receiver.recv() => {
-                       game.add_player(tui.id,tui.username());
+                        game.add_player(tui.id,tui.username());
+                        last_moves.insert(tui.id, Instant::now());
                         tuis.insert(tui.id, tui);
                     }
 
@@ -147,6 +149,11 @@ impl AppServer {
                                 println!("Error pushing to tui: {}", e);
                                 let _ = tui.exit().await;
                                 to_remove.push(player_id);
+                            } else if let Some(last_move) = last_moves.get(&player_id) {
+                                if last_move.elapsed() > Self::INACTIVITY_TIMEOUT {
+                                    let _ = tui.exit().await;
+                                    to_remove.push(player_id);
+                                }
                             }
                         }
                         for player_id in to_remove {
@@ -156,6 +163,7 @@ impl AppServer {
                     }
 
                     Some((player_id, event)) = terminal_event_receiver.recv() => {
+                        last_moves.insert(player_id, Instant::now());
                         match event {
                             TerminalEvent::Key{key_event} => {
                                 match key_event.code {
@@ -179,18 +187,17 @@ impl AppServer {
                         }
                     }
 
-                }
+                    _ = server_shutdown.cancelled() => {
+                        break
+                    }
 
-                if client_shutdown.is_cancelled() {
-                    break;
                 }
-            }
-            for tui in tuis.values_mut() {
-                let _ = tui.exit().await;
             }
 
             // Game has ended.
-            client_shutdown.cancel();
+            for tui in tuis.values_mut() {
+                let _ = tui.exit().await;
+            }
         });
     }
 }
