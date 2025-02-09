@@ -1,7 +1,7 @@
 use super::utils::{img_to_lines, RataColor};
 use crate::{
     constants::UI_SCREEN_SIZE,
-    game::{Entity, Game, GameColors, Hero, Maze},
+    game::{Entity, Game, GameColors, Hero, Maze, MAX_MAZE_ID},
     AppResult, PlayerId,
 };
 use anyhow::anyhow;
@@ -17,6 +17,7 @@ use ratatui::{
 use std::time::{Duration, Instant};
 
 const MINORADAR: [&'static str; 8] = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"];
+const NAME_LENGTH: usize = 12;
 
 const TITLE: [&'static str; 29] = [
     "     ██▓    ▄▄▄          ▄████▄   ▄▄▄        ██████  ▄▄▄            ",
@@ -83,9 +84,23 @@ fn title_paragraph<'a>() -> Paragraph<'a> {
     Paragraph::new(lines)
 }
 
+fn format_duration(duration: &Duration) -> String {
+    let seconds = duration.as_secs() % 60;
+    let minutes = (duration.as_secs() / 60) % 60;
+    let hours = (duration.as_secs() / 60) / 60;
+    let formatted_duration = if hours > 0 {
+        format!("{}h{:02}m{:02}s", hours, minutes, seconds)
+    } else if minutes > 0 {
+        format!("{}h{:02}m{:02}s", hours, minutes, seconds)
+    } else {
+        format!("{:02}s", seconds)
+    };
+    format!("{}", formatted_duration)
+}
+
 fn render_header(frame: &mut Frame, game: &Game, hero: &Hero, area: Rect) -> AppResult<()> {
     let number_of_players = game.number_of_players();
-    let maze = game.get_maze(&hero.maze_id()).unwrap();
+    let maze = game.get_maze(hero.maze_id());
 
     let mut lines = vec![
         Line::from(format!(
@@ -97,10 +112,11 @@ fn render_header(frame: &mut Frame, game: &Game, hero: &Hero, area: Rect) -> App
         Line::from(vec![
             Span::styled(format!("{}  ", hero.name()), GameColors::HERO.to_color()),
             Span::raw(format!(
-                "Room {}@{:8} - Pass rate {:.2}%",
+                "Room {}@{:8} - Pass rate {:.2}% - {}",
                 hero.maze_id() + 1,
                 format!("{:?}", hero.position()),
-                maze.success_rate() * 100.0
+                maze.success_rate() * 100.0,
+                format_duration(&hero.elapsed_duration_from_start())
             )),
         ]),
     ];
@@ -149,10 +165,9 @@ fn render_header(frame: &mut Frame, game: &Game, hero: &Hero, area: Rect) -> App
 
 fn render_sidebar(frame: &mut Frame, game: &Game, hero: &Hero, area: Rect) -> AppResult<()> {
     let split = Layout::vertical([
-        Constraint::Length(16),
-        Constraint::Length(12),
-        Constraint::Length(12),
-        Constraint::Min(0),
+        Constraint::Min(15),
+        Constraint::Max(12),
+        Constraint::Max(12),
     ])
     .split(area);
 
@@ -160,6 +175,7 @@ fn render_sidebar(frame: &mut Frame, game: &Game, hero: &Hero, area: Rect) -> Ap
         Line::from("←↑→↓: move"),
         Line::from("'a'/'d': rotate"),
         Line::from("'q'/Esc: quit"),
+        Line::from(""),
         Line::from(vec![
             Span::styled("██", GameColors::HERO.to_color()),
             Span::raw(format!(" {:12}", "Hero")),
@@ -194,9 +210,14 @@ fn render_sidebar(frame: &mut Frame, game: &Game, hero: &Hero, area: Rect) -> Ap
         .top_heros()
         .iter()
         .take(10)
-        .map(|(id, name, maze_id)| {
+        .map(|(id, name, maze_id, duration)| {
+            let record = if *maze_id < MAX_MAZE_ID {
+                format!("r{}", maze_id + 1,)
+            } else {
+                format_duration(duration)
+            };
             Line::from(Span::styled(
-                format!("{:14} r{}", name, maze_id + 1),
+                format!("{:<NAME_LENGTH$} {}", name, record),
                 if game.get_hero(id).is_some() {
                     if *id == hero.id() {
                         Style::new().fg(GameColors::HERO.to_color())
@@ -224,7 +245,12 @@ fn render_sidebar(frame: &mut Frame, game: &Game, hero: &Hero, area: Rect) -> Ap
         .iter()
         .take(10)
         .map(|(_, name, maze_id, kills)| {
-            Line::from(format!("{:14} k{} r{}", name, kills, maze_id + 1))
+            Line::from(format!(
+                "{:<NAME_LENGTH$} k{} r{}",
+                name,
+                kills,
+                maze_id + 1
+            ))
         })
         .collect_vec();
 
@@ -312,6 +338,27 @@ pub fn render(
             ])
             .centered()
             .set_style(Style::default().fg(Color::Black).bg(Color::Red))
+            .block(Block::bordered().border_type(BorderType::QuadrantOutside)),
+            popup,
+        );
+    } else if let Some(duration) = hero.has_won().as_ref() {
+        let width = 32;
+        let height = 6;
+        let popup = Rect::new(
+            v_split[1].x + (v_split[1].width.saturating_sub(width)) / 2,
+            v_split[1].y + (v_split[1].height.saturating_sub(height)) / 2,
+            width,
+            height,
+        );
+
+        frame.render_widget(
+            Paragraph::new(vec![
+                Line::from(format!("{}", hero.name())),
+                Line::from(format!("exited the labirynth in")),
+                Line::from(format_duration(duration)),
+            ])
+            .centered()
+            .set_style(Style::default().fg(Color::Black).bg(Color::LightGreen))
             .block(Block::bordered().border_type(BorderType::QuadrantOutside)),
             popup,
         );

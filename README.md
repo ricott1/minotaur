@@ -17,3 +17,22 @@ Connect via SSH to try the game.
 ssh frittura.org -p 2020
 ```
 
+## Installation
+
+### Build
+
+You need to have the [rust toolchain](https://www.rust-lang.org/tools/install). Then you can clone the repo and build the game with
+
+`cargo build --release`
+
+### With cargo
+
+`cargo install minotaur`
+
+### Binaries
+
+Download the binaries from the latest release.
+
+## Run
+
+Just run the binary to start the server. The port can be specified with the `-p <PORT>` flag.

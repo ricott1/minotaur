@@ -1,4 +1,6 @@
-use super::{direction::Direction, minotaur::Minotaur, Entity, IntoDirection, Position, View};
+use super::{
+    direction::Direction, minotaur::Minotaur, Entity, IntoDirection, Position, View, MAX_MAZE_ID,
+};
 use crate::AppResult;
 use image::{Rgba, RgbaImage};
 use itertools::Itertools;
@@ -11,8 +13,8 @@ use std::{
     collections::{HashMap, HashSet},
     path::Path,
 };
-use strum::{Display, IntoEnumIterator};
-use strum_macros::EnumIter;
+use strum::IntoEnumIterator;
+use strum_macros::{Display, EnumIter};
 
 const MAX_NUMBER_OF_WALLS: usize = 8; // We work at most in a octagone-lattice, so we have at most 8 walls.
 
@@ -414,7 +416,7 @@ impl Maze {
     }
 
     fn color(id: usize) -> Rgba<u8> {
-        let a = (id.min(10) as f64) / 10.0;
+        let a = (id.min(MAX_MAZE_ID) as f64) / MAX_MAZE_ID as f64;
         // red = Rgba([208, 28, 28, 125]);
         // whiteblueish = Rgba([210, 240, 255, 125]);
 
@@ -441,7 +443,7 @@ impl Maze {
         Rgba([0; 4])
     }
 
-    pub fn random(id: usize, entrance: Option<usize>) -> Self {
+    pub fn random(id: usize) -> Self {
         let random_seed = ChaCha8Rng::from_entropy().gen();
         let rng = &mut ChaCha8Rng::seed_from_u64(random_seed);
         let width = rng.gen_range(10 + 2 * (id / 4)..=(12 + 2 * (id / 2)).min(32));
@@ -455,7 +457,7 @@ impl Maze {
             random_seed,
             width,
             height,
-            entrance,
+            None,
             None,
             generation_algorithm,
             topology,
@@ -852,46 +854,16 @@ fn bresenham_line(from: (i32, i32), to: (i32, i32)) -> Vec<Position> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Maze, MazeGenerationAlgorithm, MazeImageStyle, MazeTopology};
-    use crate::AppResult;
-    use strum::IntoEnumIterator;
-
-    #[test]
-    fn test_maze_image() -> AppResult<()> {
-        for generation_algorithm in MazeGenerationAlgorithm::iter() {
-            for topology in MazeTopology::iter() {
-                for image_style in MazeImageStyle::iter() {
-                    let maze = Maze::new(
-                        0,
-                        0,
-                        20,
-                        12,
-                        None,
-                        None,
-                        generation_algorithm,
-                        topology,
-                        image_style,
-                    );
-                    let name = format!(
-                        "images/maze_{}_{}_{}.png",
-                        maze.generation_algorithm, maze.topology, maze.image_style
-                    );
-                    maze.save_image(&name)?;
-                }
-            }
-        }
-
-        Ok(())
-    }
+    use super::Maze;
+    use crate::{game::MAX_MAZE_ID, AppResult};
 
     #[test]
     fn test_random_mazes_image() -> AppResult<()> {
-        for id in 0..10 {
-            let maze = Maze::random(id, None);
+        for id in 0..MAX_MAZE_ID {
+            let maze = Maze::random(id);
             let name = format!("images/random_{}.png", id);
             maze.save_image(&name)?;
         }
-
         Ok(())
     }
 }

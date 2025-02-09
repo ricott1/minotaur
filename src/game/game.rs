@@ -14,32 +14,87 @@ use std::{
     time::{Duration, Instant},
 };
 
-const RESPAWN_INTERVAL: Duration = Duration::from_millis(1500);
+pub const MAX_MAZE_ID: usize = 10;
 
 pub struct Game {
-    mazes: HashMap<usize, Maze>,
+    mazes: [Maze; MAX_MAZE_ID],
     taken_names: HashSet<String>,
     heros: HashMap<PlayerId, Hero>,
-    hero_rooms: HashMap<usize, Vec<PlayerId>>,
-    top_heros_map: HashMap<PlayerId, (String, usize)>,
-    top_heros: Vec<(PlayerId, String, usize)>,
+    hero_rooms: [Vec<PlayerId>; MAX_MAZE_ID],
+    top_heros_map: HashMap<PlayerId, (String, usize, Duration)>,
+    top_heros: Vec<(PlayerId, String, usize, Duration)>,
     minotaurs: HashMap<PlayerId, Minotaur>,
-    minotaur_rooms: HashMap<usize, Vec<PlayerId>>,
+    minotaur_rooms: [Vec<PlayerId>; MAX_MAZE_ID],
     top_minotaurs_map: HashMap<PlayerId, (String, usize, usize)>,
     top_minotaurs: Vec<(PlayerId, String, usize, usize)>,
 }
 
 impl Game {
-    const TRANSITION_TIME_DELAY: std::time::Duration = std::time::Duration::from_millis(0);
+    const RESPAWN_INTERVAL: Duration = Duration::from_millis(1500);
+
+    fn should_update_hero_record(&self, hero_id: PlayerId) -> bool {
+        let hero = if let Some(hero) = self.get_hero(&hero_id) {
+            hero
+        } else {
+            return false;
+        };
+
+        let &(_, record_maze_id, record_timer) =
+            if let Some(record) = self.top_heros_map.get(&hero_id) {
+                record
+            } else {
+                return true;
+            };
+
+        if let Some(duration) = hero.has_won() {
+            if record_maze_id < MAX_MAZE_ID {
+                return true;
+            }
+            return record_timer > duration;
+        }
+
+        if record_maze_id < hero.maze_id() {
+            return true;
+        } else if record_maze_id > hero.maze_id() {
+            return false;
+        }
+
+        // Equal maze id record --> compare timer
+        record_timer > hero.elapsed_duration_from_start()
+    }
+
+    fn update_hero_record(&mut self, hero_id: PlayerId) {
+        if self.should_update_hero_record(hero_id) {
+            let hero = if let Some(hero) = self.get_hero(&hero_id) {
+                hero
+            } else {
+                return;
+            };
+
+            let record = if let Some(duration) = hero.has_won() {
+                (hero.name().to_string(), MAX_MAZE_ID, duration)
+            } else {
+                (
+                    hero.name().to_string(),
+                    hero.maze_id(),
+                    hero.elapsed_duration_from_start(),
+                )
+            };
+            self.top_heros_map.insert(hero_id, record);
+            self.update_top_heros();
+        }
+    }
 
     fn update_top_heros(&mut self) {
         self.top_heros = self
             .top_heros_map
             .iter()
-            .map(|(&id, (name, record))| (id, name.clone(), *record))
+            .map(|(&id, (name, record_maze_id, duration))| {
+                (id, name.clone(), *record_maze_id, *duration)
+            })
             .sorted_by(|a, b| {
                 if b.2 == a.2 {
-                    b.1.cmp(&a.1)
+                    a.3.cmp(&b.3)
                 } else {
                     b.2.cmp(&a.2)
                 }
@@ -78,18 +133,29 @@ impl Game {
     }
 
     pub fn new() -> Self {
-        let mut mazes = HashMap::new();
-        let maze = Maze::random(0, None);
+        let mut mazes = (0..MAX_MAZE_ID)
+            .map(|maze_id| Maze::random(maze_id))
+            .collect_array()
+            .expect("Should create maze array");
 
-        let minotaurs = HashMap::new();
-        let mut minotaur_rooms = HashMap::new();
-        minotaur_rooms.insert(maze.id, vec![]);
-        mazes.insert(maze.id, maze);
+        let mut minotaurs = HashMap::new();
+        let mut minotaur_rooms = [const { Vec::new() }; MAX_MAZE_ID];
+
+        for maze in mazes.iter_mut() {
+            let mut maze_minotaurs = vec![];
+            for index in 0..maze.id {
+                let name = format!("{}#{}{}", random_minotaur_name(), maze.id, index);
+                let minotaur = maze.spawn_minotaur(name);
+                maze_minotaurs.push(minotaur.id());
+                minotaurs.insert(minotaur.id(), minotaur);
+            }
+            minotaur_rooms[maze.id] = maze_minotaurs;
+        }
 
         Self {
             mazes,
             heros: HashMap::new(),
-            hero_rooms: HashMap::new(),
+            hero_rooms: [const { Vec::new() }; MAX_MAZE_ID],
             taken_names: HashSet::new(),
             top_heros_map: HashMap::new(),
             top_heros: vec![],
@@ -100,7 +166,7 @@ impl Game {
         }
     }
 
-    pub fn top_heros(&self) -> &Vec<(PlayerId, String, usize)> {
+    pub fn top_heros(&self) -> &Vec<(PlayerId, String, usize, Duration)> {
         &self.top_heros
     }
 
@@ -109,41 +175,35 @@ impl Game {
     }
 
     pub fn minotaurs_in_maze(&self, maze_id: usize) -> usize {
-        if let Some(maze) = self.minotaur_rooms.get(&maze_id) {
-            maze.len()
-        } else {
-            0
-        }
+        self.minotaur_rooms[maze_id].len()
     }
 
     pub fn alarm_level(&self, hero_id: &PlayerId) -> (AlarmLevel, usize) {
         if let Some(hero) = self.get_hero(hero_id) {
-            if let Some(maze_minotaurs) = self.minotaur_rooms.get(&hero.maze_id()) {
-                if maze_minotaurs.len() > 0 {
-                    let mut alarm_level = AlarmLevel::NotChasing;
-                    let mut min_distance = usize::MAX;
+            let maze_minotaurs = &self.minotaur_rooms[hero.maze_id()];
+            if maze_minotaurs.len() > 0 {
+                let mut alarm_level = AlarmLevel::NotChasing;
+                let mut min_distance = usize::MAX;
 
-                    for minotaur_id in maze_minotaurs.iter() {
-                        let minotaur = self.get_minotaur(minotaur_id).unwrap();
-                        let distance = minotaur
-                            .position()
-                            .distance_squared(hero.position().into_direction(&hero.direction()));
+                for minotaur_id in maze_minotaurs.iter() {
+                    let minotaur = self.get_minotaur(minotaur_id).unwrap();
+                    let distance = minotaur
+                        .position()
+                        .distance_squared(hero.position().into_direction(&hero.direction()));
 
-                        if distance < min_distance {
-                            min_distance = distance;
-                        }
-
-                        if minotaur.is_chasing(*hero_id) {
-                            alarm_level = AlarmLevel::ChasingHero;
-                        } else if minotaur.is_chasing_someone()
-                            && alarm_level < AlarmLevel::ChasingHero
-                        {
-                            alarm_level = AlarmLevel::ChasingOtherHero;
-                        }
+                    if distance < min_distance {
+                        min_distance = distance;
                     }
 
-                    return (alarm_level, min_distance);
+                    if minotaur.is_chasing(*hero_id) {
+                        alarm_level = AlarmLevel::ChasingHero;
+                    } else if minotaur.is_chasing_someone() && alarm_level < AlarmLevel::ChasingHero
+                    {
+                        alarm_level = AlarmLevel::ChasingOtherHero;
+                    }
                 }
+
+                return (alarm_level, min_distance);
             }
         }
         (AlarmLevel::NoMinotaurs, usize::MAX)
@@ -157,7 +217,7 @@ impl Game {
         }
         self.taken_names.insert(player_name.clone());
 
-        let maze = &mut self.mazes.get_mut(&0).unwrap();
+        let maze = &mut self.mazes[0];
         let mut hero = Hero::new(player_id, player_name, maze.hero_starting_position());
         maze.increase_attempted();
 
@@ -165,13 +225,18 @@ impl Game {
             maze.get_and_cache_visible_positions(hero.position(), hero.direction(), hero.view());
         hero.update_past_visible_positions(visible_positions);
 
-        self.hero_rooms
-            .entry(maze.id)
-            .or_insert(vec![])
-            .push(hero.id());
+        self.hero_rooms[maze.id].push(hero.id());
 
-        self.top_heros_map
-            .insert(hero.id(), (hero.name().to_string(), hero.record));
+        self.top_heros_map.insert(
+            hero.id(),
+            (
+                hero.name().to_string(),
+                0,
+                hero.elapsed_duration_from_start(),
+            ),
+        );
+
+        self.update_top_heros();
 
         self.heros.insert(player_id, hero);
     }
@@ -188,8 +253,8 @@ impl Game {
         self.minotaurs.get(id)
     }
 
-    pub fn get_maze(&self, id: &usize) -> Option<&Maze> {
-        self.mazes.get(id)
+    pub fn get_maze(&self, id: usize) -> &Maze {
+        &self.mazes[id]
     }
 
     pub fn number_of_players(&self) -> usize {
@@ -198,89 +263,16 @@ impl Game {
 
     pub fn update(&mut self) {
         // Update heros
-        let mut should_update_top_heros = false;
         for hero in self.heros.values_mut() {
             match hero.state {
-                HeroState::Transitioning { to, instant } => {
-                    if instant.elapsed() >= Self::TRANSITION_TIME_DELAY {
-                        hero.state = HeroState::InMaze;
-                        let from = hero.maze_id();
-                        let maze = self.mazes.get_mut(&from).unwrap();
-                        hero.update_past_visible_positions(maze.get_and_cache_visible_positions(
-                            hero.position(),
-                            hero.direction(),
-                            hero.view(),
-                        ));
+                HeroState::WaitingToStart | HeroState::InMaze { .. } => {}
+                HeroState::Dead { instant, .. } => {
+                    if instant.elapsed() > Self::RESPAWN_INTERVAL {
+                        // Move hero between rooms
+                        self.hero_rooms[hero.maze_id()].retain(|id| *id != hero.id());
+                        self.hero_rooms[0].push(hero.id());
 
-                        self.hero_rooms
-                            .entry(from)
-                            .and_modify(|v| v.retain(|id| *id != hero.id()));
-                        self.hero_rooms.entry(to).and_modify(|v| v.push(hero.id()));
-
-                        // If hero acquired max vision in this maze, reduce it by one.
-                        if hero.vision() == Hero::MAX_VISION {
-                            hero.decrease_vision();
-                        }
-
-                        if from < to {
-                            for (idx, exit) in self.mazes[&from].exit_positions().iter().enumerate()
-                            {
-                                if hero.position() == *exit {
-                                    hero.set_maze_id(to);
-
-                                    if hero.record < to {
-                                        hero.record = to;
-                                        self.top_heros_map.insert(
-                                            hero.id(),
-                                            (hero.name().to_string(), hero.record),
-                                        );
-                                        should_update_top_heros = true;
-                                    }
-
-                                    let maze = self.mazes.get_mut(&to).unwrap();
-                                    maze.increase_attempted();
-
-                                    hero.set_position(maze.entrance_positions()[idx]);
-                                    hero.update_past_visible_positions(
-                                        maze.get_and_cache_visible_positions(
-                                            hero.position(),
-                                            hero.direction(),
-                                            hero.view(),
-                                        ),
-                                    );
-
-                                    break;
-                                }
-                            }
-                        } else if from > to {
-                            for (idx, exit) in
-                                self.mazes[&from].entrance_positions().iter().enumerate()
-                            {
-                                if hero.position() == *exit {
-                                    hero.set_maze_id(to);
-
-                                    let maze = self.mazes.get_mut(&to).unwrap();
-                                    maze.decrease_passed();
-
-                                    hero.set_position(maze.exit_positions()[idx]);
-                                    hero.update_past_visible_positions(
-                                        maze.get_and_cache_visible_positions(
-                                            hero.position(),
-                                            hero.direction(),
-                                            hero.view(),
-                                        ),
-                                    );
-
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
-
-                HeroState::Dead { instant } => {
-                    if instant.elapsed() > RESPAWN_INTERVAL {
-                        let maze = &mut self.mazes.get_mut(&0).unwrap();
+                        let maze = &mut self.mazes[0];
                         hero.reset(maze.hero_starting_position());
                         let visible_positions = maze.get_and_cache_visible_positions(
                             hero.position(),
@@ -291,7 +283,22 @@ impl Game {
                     }
                 }
 
-                _ => {}
+                HeroState::Victory { instant, .. } => {
+                    if instant.elapsed() > Self::RESPAWN_INTERVAL {
+                        // Move hero between rooms
+                        self.hero_rooms[hero.maze_id()].retain(|id| *id != hero.id());
+                        self.hero_rooms[0].push(hero.id());
+
+                        let maze = &mut self.mazes[0];
+                        hero.reset(maze.hero_starting_position());
+                        let visible_positions = maze.get_and_cache_visible_positions(
+                            hero.position(),
+                            hero.direction(),
+                            hero.view(),
+                        );
+                        hero.update_past_visible_positions(visible_positions);
+                    }
+                }
             }
         }
 
@@ -300,7 +307,7 @@ impl Game {
 
         for minotaur in self.minotaurs.values_mut() {
             let maze_id = minotaur.maze_id();
-            let maze = self.mazes.get_mut(&maze_id).unwrap();
+            let maze = &mut self.mazes[maze_id];
 
             let visible_positions = maze.get_and_cache_visible_positions(
                 minotaur.position(),
@@ -333,9 +340,15 @@ impl Game {
 
             for hero_id in catched_heros.iter() {
                 if let Some(hero) = self.heros.get_mut(hero_id) {
-                    hero.state = HeroState::Dead {
-                        instant: Instant::now(),
-                    };
+                    match hero.state {
+                        HeroState::InMaze { instant } => {
+                            hero.state = HeroState::Dead {
+                                duration: instant.elapsed(),
+                                instant: Instant::now(),
+                            }
+                        }
+                        _ => {}
+                    }
                 }
             }
 
@@ -351,9 +364,6 @@ impl Game {
             should_update_top_minotaurs = true;
         }
 
-        if should_update_top_heros {
-            self.update_top_heros();
-        }
         if should_update_top_minotaurs {
             self.update_top_minotaurs();
         }
@@ -370,11 +380,7 @@ impl Game {
             return Err(anyhow!("Missing hero {}", player_id));
         };
 
-        let maze = if let Some(maze) = self.mazes.get(&hero.maze_id()) {
-            maze
-        } else {
-            return Err(anyhow!("Missing maze {}", hero.maze_id()));
-        };
+        let maze = &self.mazes[hero.maze_id()];
 
         // Override empty positions.
         let visible_positions =
@@ -421,7 +427,7 @@ impl Game {
         if let Some(hero) = self.heros.get(&player_id) {
             let (x, y) = hero.position();
             let maze_id = hero.maze_id();
-            let maze = &self.mazes[&maze_id];
+            let maze = &self.mazes[maze_id];
 
             let maze_image = maze.image();
 
@@ -482,20 +488,19 @@ impl Game {
             }
 
             // Add minotaurs position
-            if let Some(maze_minotaurs) = self.minotaur_rooms.get(&hero.maze_id()) {
-                for minotaur_id in maze_minotaurs.iter() {
-                    if let Some(minotaur) = self.get_minotaur(minotaur_id) {
-                        let (mx, my) = minotaur.position();
-                        if visible_positions.contains(&(mx, my)) {
-                            if minotaur.is_chasing(hero.id()) {
-                                player_image.put_pixel(
-                                    mx as u32,
-                                    my as u32,
-                                    GameColors::CHASING_MINOTAUR,
-                                );
-                            } else {
-                                player_image.put_pixel(mx as u32, my as u32, GameColors::MINOTAUR);
-                            }
+            let maze_minotaurs = &self.minotaur_rooms[hero.maze_id()];
+            for minotaur_id in maze_minotaurs.iter() {
+                if let Some(minotaur) = self.get_minotaur(minotaur_id) {
+                    let (mx, my) = minotaur.position();
+                    if visible_positions.contains(&(mx, my)) {
+                        if minotaur.is_chasing(hero.id()) {
+                            player_image.put_pixel(
+                                mx as u32,
+                                my as u32,
+                                GameColors::CHASING_MINOTAUR,
+                            );
+                        } else {
+                            player_image.put_pixel(mx as u32, my as u32, GameColors::MINOTAUR);
                         }
                     }
                 }
@@ -509,28 +514,32 @@ impl Game {
         return Err(anyhow!("No hero with id {}", player_id));
     }
 
-    pub fn handle_command(&mut self, command: &HeroCommand, player_id: PlayerId) {
-        let hero = if let Some(hero) = self.heros.get_mut(&player_id) {
+    pub fn handle_command(&mut self, command: &HeroCommand, hero_id: PlayerId) {
+        let hero = if let Some(hero) = self.heros.get_mut(&hero_id) {
             hero
         } else {
             return;
         };
-        match hero.state {
-            HeroState::InMaze => {
-                let maze_id = hero.maze_id();
-                let maze = if let Some(maze) = self.mazes.get_mut(&maze_id) {
-                    maze
-                } else {
-                    return;
-                };
 
+        if hero.state == HeroState::WaitingToStart {
+            hero.state = HeroState::InMaze {
+                instant: Instant::now(),
+            }
+        }
+
+        match hero.state {
+            HeroState::WaitingToStart => unreachable!(),
+            HeroState::InMaze { instant } => {
+                let maze_id = hero.maze_id();
                 match command {
                     HeroCommand::Move { direction } => {
-                        hero.update_past_visible_positions(maze.get_and_cache_visible_positions(
-                            hero.position(),
-                            hero.direction(),
-                            hero.view(),
-                        ));
+                        hero.update_past_visible_positions(
+                            self.mazes[maze_id].get_and_cache_visible_positions(
+                                hero.position(),
+                                hero.direction(),
+                                hero.view(),
+                            ),
+                        );
 
                         if *direction != hero.direction() {
                             hero.set_direction(*direction);
@@ -538,7 +547,7 @@ impl Game {
 
                         if !hero.can_move() {
                             hero.update_past_visible_positions(
-                                maze.get_and_cache_visible_positions(
+                                self.mazes[maze_id].get_and_cache_visible_positions(
                                     hero.position(),
                                     hero.direction(),
                                     hero.view(),
@@ -549,9 +558,9 @@ impl Game {
 
                         let (new_x, new_y) = hero.position().into_direction(direction);
 
-                        if !maze.is_valid_position((new_x, new_y)) {
+                        if !self.mazes[maze_id].is_valid_position((new_x, new_y)) {
                             hero.update_past_visible_positions(
-                                maze.get_and_cache_visible_positions(
+                                self.mazes[maze_id].get_and_cache_visible_positions(
                                     hero.position(),
                                     hero.direction(),
                                     hero.view(),
@@ -561,7 +570,7 @@ impl Game {
                         }
 
                         hero.set_position((new_x, new_y));
-                        if let Some(position) = maze.power_up_position {
+                        if let Some(position) = self.mazes[maze_id].power_up_position {
                             if position == hero.position()
                                 && hero.power_up_collected_in_maze().is_none()
                             {
@@ -569,84 +578,149 @@ impl Game {
                             }
                         }
 
-                        hero.update_past_visible_positions(maze.get_and_cache_visible_positions(
-                            hero.position(),
-                            hero.direction(),
-                            hero.view(),
-                        ));
+                        // Transition between rooms
+                        if self.mazes[maze_id].is_entrance_position(hero.position()) && maze_id > 0
+                        {
+                            let to = maze_id - 1;
+                            self.mazes[maze_id].decrease_attempted();
+                            self.mazes[to].decrease_passed();
+                            hero.set_maze_id(to);
 
-                        if maze.is_entrance_position(hero.position()) {
-                            if maze_id > 0 {
-                                hero.state = HeroState::Transitioning {
-                                    to: maze_id - 1,
+                            // Move hero between rooms
+                            self.hero_rooms[maze_id].retain(|id| *id != hero.id());
+                            self.hero_rooms[to].push(hero.id());
+
+                            // If hero acquired max vision in this maze, reduce it by one.
+                            if hero.vision() == Hero::MAX_VISION {
+                                hero.decrease_vision();
+                            }
+
+                            for (idx, entrance) in
+                                self.mazes[maze_id].entrance_positions().iter().enumerate()
+                            {
+                                if hero.position() == *entrance {
+                                    hero.set_position(self.mazes[to].exit_positions()[idx]);
+                                    break;
+                                }
+                            }
+                        } else if self.mazes[maze_id].is_exit_position(hero.position()) {
+                            let to = maze_id + 1;
+                            self.mazes[maze_id].increase_passed();
+
+                            // Move hero between rooms
+                            self.hero_rooms[maze_id].retain(|id| *id != hero.id());
+
+                            if to == MAX_MAZE_ID {
+                                hero.state = HeroState::Victory {
+                                    duration: instant.elapsed(),
                                     instant: Instant::now(),
+                                };
+                            } else {
+                                hero.set_maze_id(to);
+                                self.hero_rooms[to].push(hero.id());
+                                self.mazes[to].increase_attempted();
+
+                                // If hero acquired max vision in this maze, reduce it by one.
+                                if hero.vision() == Hero::MAX_VISION {
+                                    hero.decrease_vision();
                                 }
-                            }
-                        } else if maze.is_exit_position(hero.position()) {
-                            maze.increase_passed();
-                            hero.state = HeroState::Transitioning {
-                                to: maze_id + 1,
-                                instant: Instant::now(),
-                            };
 
-                            if !self.hero_rooms.contains_key(&(maze_id + 1)) {
-                                self.hero_rooms.insert(maze.id, vec![]);
-                            }
-
-                            if !self.mazes.contains_key(&(maze_id + 1)) {
-                                let mut maze = Maze::random(maze_id + 1, None);
-                                let mut maze_minotaurs = vec![];
-                                for _ in 0..maze.id {
-                                    let rng = &mut rand::thread_rng();
-                                    let name = &random_minotaur_name();
-                                    let mut minotaur_name = to_player_name(rng, name);
-                                    while self.taken_names.contains(&minotaur_name) {
-                                        minotaur_name = to_player_name(rng, name);
+                                for (idx, exit) in
+                                    self.mazes[maze_id].exit_positions().iter().enumerate()
+                                {
+                                    if hero.position() == *exit {
+                                        hero.set_position(self.mazes[to].entrance_positions()[idx]);
+                                        break;
                                     }
-                                    self.taken_names.insert(minotaur_name.clone());
-
-                                    let minotaur = maze.spawn_minotaur(minotaur_name);
-                                    maze_minotaurs.push(minotaur.id());
-                                    self.minotaurs.insert(minotaur.id(), minotaur);
                                 }
-                                self.minotaur_rooms.insert(maze.id, maze_minotaurs);
-                                self.mazes.insert(maze.id, maze);
                             }
                         }
+
+                        hero.update_past_visible_positions(
+                            self.mazes[hero.maze_id()].get_and_cache_visible_positions(
+                                hero.position(),
+                                hero.direction(),
+                                hero.view(),
+                            ),
+                        );
                     }
 
                     HeroCommand::TurnClockwise => {
-                        hero.update_past_visible_positions(maze.get_and_cache_visible_positions(
-                            hero.position(),
-                            hero.direction(),
-                            hero.view(),
-                        ));
+                        hero.update_past_visible_positions(
+                            self.mazes[maze_id].get_and_cache_visible_positions(
+                                hero.position(),
+                                hero.direction(),
+                                hero.view(),
+                            ),
+                        );
                         hero.set_direction(hero.direction().rotate_clockwise());
-                        hero.update_past_visible_positions(maze.get_and_cache_visible_positions(
-                            hero.position(),
-                            hero.direction(),
-                            hero.view(),
-                        ));
+                        hero.update_past_visible_positions(
+                            self.mazes[maze_id].get_and_cache_visible_positions(
+                                hero.position(),
+                                hero.direction(),
+                                hero.view(),
+                            ),
+                        );
                     }
 
                     HeroCommand::TurnCounterClockwise => {
-                        hero.update_past_visible_positions(maze.get_and_cache_visible_positions(
-                            hero.position(),
-                            hero.direction(),
-                            hero.view(),
-                        ));
+                        hero.update_past_visible_positions(
+                            self.mazes[maze_id].get_and_cache_visible_positions(
+                                hero.position(),
+                                hero.direction(),
+                                hero.view(),
+                            ),
+                        );
                         hero.set_direction(hero.direction().rotate_counter_clockwise());
-                        hero.update_past_visible_positions(maze.get_and_cache_visible_positions(
-                            hero.position(),
-                            hero.direction(),
-                            hero.view(),
-                        ));
+                        hero.update_past_visible_positions(
+                            self.mazes[maze_id].get_and_cache_visible_positions(
+                                hero.position(),
+                                hero.direction(),
+                                hero.view(),
+                            ),
+                        );
                     }
 
                     HeroCommand::CycleUiOptions => hero.ui_options = hero.ui_options.next(),
                 }
             }
             _ => {}
+        }
+
+        self.update_hero_record(hero_id);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Game, MAX_MAZE_ID};
+    use crate::{game::utils::to_player_name, PlayerId};
+    use rand::Rng;
+    use std::time::Duration;
+
+    #[test]
+    fn test_top_heros() {
+        let mut game = Game::new();
+
+        let rng = &mut rand::thread_rng();
+
+        for _ in 0..100 {
+            game.top_heros_map.insert(
+                PlayerId::new_v4(),
+                (
+                    to_player_name(rng, "name"),
+                    rng.gen_range(0..=MAX_MAZE_ID),
+                    Duration::from_millis(rng.gen_range(15000..150000)),
+                ),
+            );
+        }
+
+        game.update_top_heros();
+        for index in 0..game.top_heros.len() {
+            let (_, _, maze_id, timer) = game.top_heros[index];
+            let (_, _, next_maze_id, next_timer) = game.top_heros[index];
+
+            assert!(maze_id > next_maze_id || timer <= next_timer);
         }
     }
 }

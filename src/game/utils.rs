@@ -4,7 +4,7 @@ use rand::{rngs::ThreadRng, seq::SliceRandom, Rng};
 pub fn to_player_name(rng: &mut ThreadRng, name: &str) -> String {
     format!(
         "{}#{:03}",
-        name.chars().take(10).collect::<String>(),
+        name.chars().take(8).collect::<String>(),
         rng.gen_range(0..1000)
     )
 }
@@ -19,7 +19,7 @@ pub fn random_minotaur_name() -> String {
 pub struct GameColors {}
 
 impl GameColors {
-    pub const HERO: Rgba<u8> = Rgba([3, 3, 255, 255]);
+    pub const HERO: Rgba<u8> = Rgba([35, 35, 255, 255]);
     pub const OTHER_HERO: Rgba<u8> = Rgba([3, 255, 3, 255]);
     pub const MINOTAUR: Rgba<u8> = Rgba([225, 203, 3, 255]);
     pub const CHASING_MINOTAUR: Rgba<u8> = Rgba([255, 15, 0, 255]);

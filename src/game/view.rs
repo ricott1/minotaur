@@ -9,14 +9,6 @@ pub enum View {
 }
 
 impl View {
-    pub fn hero() -> Self {
-        Self::Cone { radius: 8 }
-    }
-
-    pub fn minotaur(radius: usize) -> Self {
-        Self::Circle { radius }
-    }
-
     pub fn radius(&self) -> usize {
         match self {
             Self::Cone { radius, .. } => *radius,

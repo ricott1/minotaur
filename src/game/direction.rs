@@ -1,5 +1,4 @@
-use strum::Display;
-use strum_macros::EnumIter;
+use strum_macros::{Display, EnumIter};
 
 #[derive(Debug, Copy, Clone, Display, PartialEq, Eq, Hash, EnumIter)]
 pub enum Direction {

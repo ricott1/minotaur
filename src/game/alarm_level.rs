@@ -1,7 +1,6 @@
-use image::Rgba;
-use strum::Display;
-
 use super::GameColors;
+use image::Rgba;
+use strum_macros::Display;
 
 #[derive(Clone, Copy, Debug, Display, PartialEq, PartialOrd)]
 pub enum AlarmLevel {

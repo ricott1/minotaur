@@ -87,7 +87,6 @@ impl Minotaur {
         if let Some(hero_id) = self.chasing {
             // Move toward chased hero
             if let Some(hero) = visible_heros.iter().find(|h| h.id() == hero_id) {
-                println!("{} is chasing {}", self.name, hero.name());
                 let current_distance = self.position.distance(hero.position());
                 available_directions = available_directions
                     .iter()

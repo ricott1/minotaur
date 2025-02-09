@@ -5,7 +5,7 @@ use std::{
     collections::{HashMap, HashSet},
     time::{Duration, Instant},
 };
-use strum::Display;
+use strum_macros::Display;
 
 #[derive(Debug)]
 pub enum HeroCommand {
@@ -56,9 +56,18 @@ impl HeroCommand {
 
 #[derive(Debug, Clone, Copy, Display, PartialEq)]
 pub enum HeroState {
-    InMaze,
-    Transitioning { to: usize, instant: Instant },
-    Dead { instant: Instant },
+    WaitingToStart,
+    InMaze {
+        instant: Instant,
+    },
+    Dead {
+        duration: Duration,
+        instant: Instant,
+    },
+    Victory {
+        duration: Duration,
+        instant: Instant,
+    },
 }
 #[derive(Debug, Clone, Copy, Display, PartialEq)]
 pub enum UiOptions {
@@ -81,8 +90,6 @@ pub struct Hero {
     name: String,
     pub state: HeroState,
     maze_id: usize,
-    pub record: usize,
-    pub timer: Instant,
     position: Position,
     direction: Direction,
     vision: usize,
@@ -101,14 +108,12 @@ impl Hero {
     pub const INITIAL_VISION: usize = 1;
     pub const INITIAL_MEMORY: u64 = 0;
     pub fn new(id: PlayerId, name: String, position: Position) -> Self {
-        let state = HeroState::InMaze;
+        let state = HeroState::WaitingToStart;
         Self {
             id,
             name,
             state,
             maze_id: 0,
-            record: 0,
-            timer: Instant::now(),
             position,
             direction: Direction::East,
             vision: Self::INITIAL_VISION,
@@ -122,9 +127,8 @@ impl Hero {
     }
 
     pub fn reset(&mut self, position: Position) {
-        self.state = HeroState::InMaze;
+        self.state = HeroState::WaitingToStart;
         self.maze_id = 0;
-        self.timer = Instant::now();
         self.position = position;
         self.direction = Direction::East;
         self.vision = Self::INITIAL_VISION;
@@ -139,6 +143,22 @@ impl Hero {
         matches!(self.state, HeroState::Dead { .. })
     }
 
+    pub fn has_won(&self) -> Option<Duration> {
+        match self.state {
+            HeroState::Victory { duration, .. } => Some(duration),
+            _ => None,
+        }
+    }
+
+    pub fn elapsed_duration_from_start(&self) -> Duration {
+        match self.state {
+            HeroState::WaitingToStart => Duration::from_millis(0),
+            HeroState::InMaze { instant } => instant.elapsed(),
+            HeroState::Dead { duration, .. } => duration,
+            HeroState::Victory { duration, .. } => duration,
+        }
+    }
+
     pub fn can_move(&self) -> bool {
         if self.is_dead() {
             return false;
@@ -148,7 +168,7 @@ impl Hero {
     }
 
     pub fn past_visibility_duration(&self) -> Duration {
-        Duration::from_secs_f32(10.0 + 2.5 * self.memory as f32)
+        Duration::from_secs_f32(10.0 + 5.0 * self.memory as f32)
     }
 
     pub fn update_past_visible_positions(&mut self, visible_positions: HashSet<Position>) {
