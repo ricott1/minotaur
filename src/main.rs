@@ -1,3 +1,4 @@
+use asterion::{ssh::AppServer, store_path, AppResult};
 use clap::{ArgAction, Parser};
 use log::LevelFilter;
 use log4rs::{
@@ -6,12 +7,11 @@ use log4rs::{
     encode::pattern::PatternEncoder,
     Config,
 };
-use minotaur::{ssh::AppServer, store_path, AppResult};
 
 const DEFAULT_PORT: u16 = 2020;
 
 #[derive(Parser, Debug)]
-#[clap(name="Minotaur", about = "Find your way in da maze", author, version, long_about = None)]
+#[clap(name="Asterion", about = "Find your way in da maze", author, version, long_about = None)]
 struct Args {
     #[clap(long, short = 'p', action=ArgAction::Set, help = "Set port to listen on")]
     port: Option<u16>,

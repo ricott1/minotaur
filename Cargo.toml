@@ -1,5 +1,5 @@
 [package]
-name = "minotaur"
+name = "asterion"
 version = "0.3.0"
 edition = "2021"
 homepage = "https://github.com/ricott1/minotaur"

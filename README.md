@@ -27,7 +27,7 @@ You need to have the [rust toolchain](https://www.rust-lang.org/tools/install). 
 
 ### With cargo
 
-`cargo install minotaur`
+`cargo install asterion`
 
 ### Binaries
 
