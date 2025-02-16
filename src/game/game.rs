@@ -99,7 +99,7 @@ impl Game {
                     b.2.cmp(&a.2)
                 }
             })
-            .collect_vec()
+            .collect_vec();
     }
 
     fn update_top_minotaurs(&mut self) {
@@ -423,7 +423,6 @@ impl Game {
     }
 
     pub fn draw(&self, player_id: PlayerId) -> AppResult<RgbaImage> {
-        //FIXME: if hero is transitioning from one maze to the other, join the two maze images (and crop them to simulate the exit->entrance transition)
         if let Some(hero) = self.heros.get(&player_id) {
             let (x, y) = hero.position();
             let maze_id = hero.maze_id();

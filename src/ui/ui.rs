@@ -17,7 +17,7 @@ use ratatui::{
 use std::time::{Duration, Instant};
 
 const MINORADAR: [&'static str; 8] = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"];
-const NAME_LENGTH: usize = 12;
+const NAME_LENGTH: usize = 13;
 
 const TITLE: [&'static str; 29] = [
     "     ██▓    ▄▄▄          ▄████▄   ▄▄▄        ██████  ▄▄▄            ",
@@ -91,7 +91,7 @@ fn format_duration(duration: &Duration) -> String {
     let formatted_duration = if hours > 0 {
         format!("{}h{:02}m{:02}s", hours, minutes, seconds)
     } else if minutes > 0 {
-        format!("{}h{:02}m{:02}s", hours, minutes, seconds)
+        format!("{:02}m{:02}s", minutes, seconds)
     } else {
         format!("{:02}s", seconds)
     };
@@ -104,7 +104,7 @@ fn render_header(frame: &mut Frame, game: &Game, hero: &Hero, area: Rect) -> App
 
     let mut lines = vec![
         Line::from(format!(
-            "There {} {} hero{} in the labirynth...",
+            "There {} {} hero{} in the labyrinth...",
             if number_of_players == 1 { "is" } else { "are" },
             number_of_players,
             if number_of_players == 1 { "" } else { "es" },
@@ -246,7 +246,7 @@ fn render_sidebar(frame: &mut Frame, game: &Game, hero: &Hero, area: Rect) -> Ap
         .take(10)
         .map(|(_, name, maze_id, kills)| {
             Line::from(format!(
-                "{:<NAME_LENGTH$} k{} r{}",
+                "{:<NAME_LENGTH$} k{:<3} r{}",
                 name,
                 kills,
                 maze_id + 1
@@ -354,7 +354,7 @@ pub fn render(
         frame.render_widget(
             Paragraph::new(vec![
                 Line::from(format!("{}", hero.name())),
-                Line::from(format!("exited the labirynth in")),
+                Line::from(format!("exited the labyrinth in")),
                 Line::from(format_duration(duration)),
             ])
             .centered()

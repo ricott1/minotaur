@@ -18,7 +18,7 @@ use tokio_util::sync::CancellationToken;
 pub type PlayerId = uuid::Uuid;
 
 pub struct AppClient {
-    id: PlayerId,
+    player_id: PlayerId,
     username: String,
     client_sender: Sender<Tui>,
     terminal_event_sender: Sender<(PlayerId, TerminalEvent)>,
@@ -33,7 +33,7 @@ impl AppClient {
         terminal_event_sender: Sender<(PlayerId, TerminalEvent)>,
     ) -> Self {
         AppClient {
-            id: uuid::Uuid::new_v4(),
+            player_id: PlayerId::new_v4(),
             username: "".into(),
             client_sender,
             terminal_event_sender,
@@ -63,12 +63,12 @@ impl AppClient {
         SSHEventHandler::start(
             stdin,
             self.terminal_event_sender.clone(),
-            self.id,
+            self.player_id,
             client_shutdown.clone(),
             self.server_shutdown.clone(),
         );
         let tui = Tui::new(
-            self.id,
+            self.player_id,
             self.username.clone(),
             width,
             height,
